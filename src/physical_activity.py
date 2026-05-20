@@ -6,7 +6,7 @@ from pathlib import Path
 # =========================================================
 
 DATA_DIR = Path("mcphases")   # change to your folder path
-OUTPUT_FILE = "merged_physical_activity.csv"
+OUTPUT_FILE = "mcphases/merged/physical_activity.csv"
 
 # =========================================================
 # LOAD CSV FILES
@@ -119,7 +119,7 @@ exercise = exercise[[
     "activityname",
     "averageheartrate",
     "calories",
-    "duration",
+    "activeduration",
     "steps",
     "activezoneminutes",
     "elevationgain"
@@ -129,30 +129,40 @@ exercise = exercise.rename(columns={
     "start_day_in_study": "day_in_study"
 })
 
+exercise["weighted_hr"] = (
+    exercise["averageheartrate"] *
+    exercise["activeduration"]
+)
+
 # Daily aggregation
 exercise = (
     exercise
     .groupby(["id", "day_in_study"], as_index=False)
     .agg({
-        "duration": "sum",
+        "activeduration": "sum",
+        "weighted_hr": "sum",
         "calories": "sum",
         "steps": "sum",
         "activezoneminutes": "sum",
         "elevationgain": "sum",
-        "averageheartrate": "mean",
         "activityname": "count"
-    })
-    .rename(columns={
-        "duration": "exercise_duration_ms",
-        "calories": "exercise_calories",
-        "steps": "exercise_steps",
-        "activezoneminutes": "exercise_azm",
-        "elevationgain": "exercise_elevation_gain",
-        "averageheartrate": "avg_exercise_hr",
-        "activityname": "num_exercise_sessions"
     })
 )
 
+exercise["avg_exercise_hr"] = (
+    exercise["weighted_hr"] /
+    exercise["activeduration"]
+)
+
+exercise = exercise.drop(columns=["weighted_hr"])
+
+exercise = exercise.rename(columns={
+    "calories": "exercise_calories",
+    "steps": "exercise_steps",
+    "activezoneminutes": "exercise_zone_minutes",
+    "elevationgain": "exercise_elevation_gain",
+    "activeduration": "exercise_duration"
+})
 # -------------------------
 # steps.csv
 # -------------------------
@@ -180,23 +190,6 @@ steps = (
 hormones = hormones[[
     "id",
     "day_in_study",
-
-    # cycle / hormones
-    "phase",
-    "lh",
-    "estrogen",
-    "pdg",
-
-    # symptoms
-    "fatigue",
-    "stress",
-    "moodswing",
-    "cramps",
-    "sleepissue",
-    "bloating",
-    "foodcravings",
-
-    # behavior
     "exerciselevel",
     "appetite"
 ]]
@@ -217,6 +210,10 @@ dfs_to_merge = [
 ]
 
 for df in dfs_to_merge:
+    # coerce day_in_study to numeric on both sides to avoid dtype mismatches
+    if 'day_in_study' in merged.columns and 'day_in_study' in df.columns:
+        merged['day_in_study'] = pd.to_numeric(merged['day_in_study'], errors='coerce')
+        df['day_in_study'] = pd.to_numeric(df['day_in_study'], errors='coerce')
     merged = merged.merge(
         df,
         on=["id", "day_in_study"],
@@ -228,9 +225,9 @@ for df in dfs_to_merge:
 # =========================================================
 
 # Fill missing numeric values with 0
-numeric_cols = merged.select_dtypes(include="number").columns
+# numeric_cols = merged.select_dtypes(include="number").columns
 
-merged[numeric_cols] = merged[numeric_cols].fillna(0)
+# merged[numeric_cols] = merged[numeric_cols].fillna(0)
 
 # =========================================================
 # SAVE
