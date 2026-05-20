@@ -6,7 +6,7 @@ from pathlib import Path
 # =========================================================
 
 DATA_DIR = Path("mcphases")
-OUTPUT_FILE = "mcphases/merged/stress_recovery.csv"
+OUTPUT_FILE = DATA_DIR / "merged" / "stress_recovery.csv"
 
 # =========================================================
 # LOAD CSV FILES
@@ -21,99 +21,124 @@ sleep_score = pd.read_csv(DATA_DIR / "sleep_score.csv")
 hormones = pd.read_csv(DATA_DIR / "hormones_and_selfreport.csv")
 
 # =========================================================
-# KEEP ONLY RELEVANT COLUMNS
+# HEART RATE
 # =========================================================
 
-# -------------------------
-# heart_rate.csv
-# -------------------------
-heart = heart[[c for c in ["id", "day_in_study", "bpm"] if c in heart.columns]]
+heart = heart[["id", "day_in_study", "bpm"]]
 
-if "bpm" in heart.columns:
-    if "day_in_study" in heart.columns:
-        heart = (
-            heart
-            .groupby(["id", "day_in_study"], as_index=False)
-            .agg({"bpm": "mean"})
-            .rename(columns={"bpm": "mean_bpm"})
-        )
-    else:
-        heart = (
-            heart
-            .groupby("id", as_index=False)
-            .agg({"bpm": "mean"})
-            .rename(columns={"bpm": "mean_bpm"})
-        )
+heart = (
+    heart
+    .groupby(["id", "day_in_study"], as_index=False)
+    .agg(mean_bpm=("bpm", "mean"))
+)
 
-# -------------------------
-# heart_rate_variability_details.csv
-# -------------------------
-if "timestamp" in hrv.columns and "day_in_study" not in hrv.columns:
-    hrv = hrv.rename(columns={"timestamp": "day_in_study"})
+# =========================================================
+# HRV
+# =========================================================
 
-hrv = hrv[[c for c in ["id", "day_in_study", "rmssd"] if c in hrv.columns]]
-if hrv.columns.duplicated().any():
-    hrv = hrv.loc[:, ~hrv.columns.duplicated()]
+hrv = hrv[["id", "day_in_study", "rmssd", "coverage", "low_frequency", "high_frequency"]]
 
-if {"id", "day_in_study", "rmssd"}.issubset(hrv.columns):
-    hrv = (
-        hrv
-        .groupby(["id", "day_in_study"], as_index=False)
-        .agg({"rmssd": "mean"})
-        .rename(columns={"rmssd": "mean_rmssd"})
+hrv = (
+    hrv
+    .groupby(["id", "day_in_study"], as_index=False)
+    .agg(
+        mean_rmssd=("rmssd", "mean"),
+        mean_coverage=("coverage", "mean"),
+        mean_low_frequency=("low_frequency", "mean"),
+        mean_high_frequency=("high_frequency", "mean")
     )
+)
 
-# -------------------------
-# resting_heart_rate.csv
-# -------------------------
+# =========================================================
+# RESTING HEART RATE
+# =========================================================
+
 if "value" in resting.columns:
     resting = resting.rename(columns={"value": "resting_hr"})
-resting = resting[[c for c in ["id", "resting_hr"] if c in resting.columns]]
 
-# -------------------------
-# stress_score.csv
-# -------------------------
-if "timestamp" in stress_score.columns and "day_in_study" not in stress_score.columns:
-    stress_score = stress_score.rename(columns={"timestamp": "day_in_study"})
-stress_score = stress_score[[c for c in ["id", "day_in_study", "overall_score"] if c in stress_score.columns]]
-if stress_score.columns.duplicated().any():
-    stress_score = stress_score.loc[:, ~stress_score.columns.duplicated()]
-stress_score = stress_score.rename(columns={"overall_score": "stress_overall_score"})
-
-# -------------------------
-# respiratory_rate_summary.csv
-# -------------------------
-if "timestamp" in rr.columns and "day_in_study" not in rr.columns:
-    rr = rr.rename(columns={"timestamp": "day_in_study"})
-rr = rr[[c for c in ["id", "day_in_study", "full_sleep_breathing_rate"] if c in rr.columns]]
-if rr.columns.duplicated().any():
-    rr = rr.loc[:, ~rr.columns.duplicated()]
-rr = rr.rename(columns={"full_sleep_breathing_rate": "sleep_breathing_rate"})
-
-# -------------------------
-# sleep_score.csv
-# -------------------------
-if "timestamp" in sleep_score.columns and "day_in_study" not in sleep_score.columns:
-    sleep_score = sleep_score.rename(columns={"timestamp": "day_in_study"})
-sleep_score = sleep_score[[c for c in ["id", "day_in_study", "overall_score"] if c in sleep_score.columns]]
-if sleep_score.columns.duplicated().any():
-    sleep_score = sleep_score.loc[:, ~sleep_score.columns.duplicated()]
-sleep_score = sleep_score.rename(columns={"overall_score": "sleep_overall_score"})
-
-# -------------------------
-# hormones_and_selfreport.csv
-# -------------------------
-hormones = hormones[[c for c in [
-    "id",
-    "day_in_study",
-    "stresslevel",
-    "recovery",
-    "mood",
-    "fatigue"
-] if c in hormones.columns]]
+resting = resting[["id", "day_in_study", "resting_hr"]]
 
 # =========================================================
-# MERGE EVERYTHING
+# STRESS SCORE
+# =========================================================
+
+stress_score = stress_score[stress_score["calculation_failed"] == False]
+
+stress_score = stress_score[
+    [
+        "id",
+        "day_in_study",
+        "stress_score",
+        "sleep_points",
+        "responsiveness_points",
+        "exertion_points"
+    ]
+]
+
+stress_score = stress_score.groupby(
+    ["id", "day_in_study"],
+    as_index=False
+).agg(
+    stress_score=("stress_score", "mean"), 
+    stress_sleep_points=("sleep_points", "mean"),
+    stress_responsiveness_points=("responsiveness_points", "mean"),
+    stress_exertion_points=("exertion_points", "mean")
+)
+
+# =========================================================
+# RESPIRATORY RATE
+# =========================================================
+
+rr = rr[
+    ["id", "day_in_study", "full_sleep_breathing_rate", "deep_sleep_breathing_rate", 
+     "light_sleep_breathing_rate", "rem_sleep_breathing_rate"]
+]
+
+rr = (
+    rr
+    .groupby(["id", "day_in_study"], as_index=False)
+    .agg(
+        sleep_breathing_rate=("full_sleep_breathing_rate","mean"),
+        deep_sleep_breathing_rate=("deep_sleep_breathing_rate","mean"),
+        light_sleep_breathing_rate=("light_sleep_breathing_rate","mean"),
+        rem_sleep_breathing_rate=("rem_sleep_breathing_rate","mean")
+        )
+    )
+
+# =========================================================
+# SLEEP SCORE
+# =========================================================
+
+sleep_score = sleep_score[
+    ["id", "day_in_study", "overall_score", "revitalization_score", "composition_score", "duration_score"]]
+
+sleep_score = (
+    sleep_score
+    .groupby(["id", "day_in_study"], as_index=False)
+    .agg(sleep_overall_score=("overall_score", "mean"), 
+         sleep_revitalization_score=("revitalization_score", "mean"), 
+         sleep_composition_score=("composition_score", "mean"), 
+         sleep_duration_score=("duration_score", "mean"))
+)
+
+# =========================================================
+# HORMONES + SELF REPORT
+# =========================================================
+
+hormones = hormones[
+    [
+        "id",
+        "day_in_study",
+        "phase",
+        "stress",
+        "sleepissue",
+        "fatigue"
+    ]
+]
+
+
+# =========================================================
+# MERGE
 # =========================================================
 
 merged = hormones.copy()
@@ -128,26 +153,19 @@ dfs_to_merge = [
 ]
 
 for df in dfs_to_merge:
-    if df.empty:
-        continue
 
-    if "day_in_study" in merged.columns and "day_in_study" in df.columns:
-        merged["day_in_study"] = pd.to_numeric(merged["day_in_study"], errors="coerce")
-        df["day_in_study"] = pd.to_numeric(df["day_in_study"], errors="coerce")
-        merged = merged.merge(df, on=["id", "day_in_study"], how="left")
-    elif "id" in df.columns:
-        merged = merged.merge(df, on=["id"], how="left")
+    merged = merged.merge(
+        df,
+        on=["id", "day_in_study"],
+        how="left"
+    )
 
-# =========================================================
-# OPTIONAL CLEANING
-# =========================================================
-
-numeric_cols = merged.select_dtypes(include="number").columns
-merged[numeric_cols] = merged[numeric_cols].fillna(0)
 
 # =========================================================
 # SAVE
 # =========================================================
+
+OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 merged.to_csv(OUTPUT_FILE, index=False)
 
