@@ -1,4 +1,5 @@
 mcphases/*.csv
+mcphases/merged/*.csv
 
 venv/
 __pycache__/
