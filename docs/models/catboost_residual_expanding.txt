@@ -1,0 +1,84 @@
+Model: catboost_residual_expanding
+====================================
+
+Name & Task
+-----------
+Registry key: catboost_residual_expanding
+Task type: Ordinal regression (fatigue_num, 0-5) — hybrid / residual model
+
+
+Purpose
+-------
+Combine the best persistence baseline (expanding mean of prior fatigue)
+with a CatBoost model that predicts the residual adjustment from activity
+and other history features.
+
+
+Algorithm & Library
+-------------------
+Hybrid: final_pred = clip(expanding_mean + CatBoost_residual)
+Wrapper: ResidualOrdinalWrapper in src/modeling/models/hybrid.py
+Inner model: CatBoostRegressor (RMSE on residual target)
+
+
+Source Code
+-----------
+Builder: build_catboost_residual_expanding() in src/modeling/models/hybrid.py
+Hybrid matrix: build_hybrid_residual_matrix() in src/modeling/data.py
+Registry: HISTORY_ORDINAL_MODELS / RESIDUAL_ORDINAL_MODELS
+Training data: bundle.X_train_val_hybrid / bundle.X_test_hybrid
+
+
+Input Format
+------------
+Tree-encoded DataFrame with:
+  - Base same-day features (phase one-hot, activity, hormones, demographics)
+  - Six history columns (expanding mean excluded from X):
+      fatigue_lag1, fatigue_ewma, fatigue_delta_lag1,
+      active_minutes_roll3_mean, calories_sum_roll3_mean, very_roll3_mean
+  - __prior__ column: fatigue_expanding_mean for that row
+
+
+Preprocessing
+-------------
+Prior column attached via attach_prior_frame().
+Missing prior on first day of participant: filled with train median at fit;
+same fallback at predict.
+Residual target at fit: y - prior_filled.
+
+
+Default Hyperparameters
+-----------------------
+CatBoost inner regressor (same as catboost_ordinal):
+  iterations=300, depth=6, learning_rate=0.05, l2_leaf_reg=3.0
+
+
+Optuna Search Space
+-------------------
+Same as catboost_ordinal (optimizes CV MAE on final clipped predictions).
+
+
+Training Flow
+-------------
+1. ResidualOrdinalWrapper.fit: compute residuals, train CatBoost on features.
+2. Optuna minimizes mean CV MAE over GroupKFold (same protocol as other models).
+3. predict: prior + residual_hat, then clip to [0, 5].
+
+
+Prediction & Post-processing
+------------------------------
+clip_ordinal_predictions(prior + residual_hat)
+
+
+Evaluation Protocol
+-------------------
+Primary benchmark: expanding_mean test MAE (~0.84)
+Secondary: lag1_fatigue (~0.93)
+Negative delta_mae_vs_expanding_mean = improvement over best baseline
+
+
+Known Limitations
+-----------------
+If residual is near zero everywhere, model collapses toward expanding_mean.
+Still requires valid prior history; first-day rows use median fallback.
+Does not model participant-specific random effects for held-out ids.

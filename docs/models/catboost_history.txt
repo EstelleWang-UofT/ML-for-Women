@@ -1,0 +1,80 @@
+Model: catboost_history
+=========================
+
+Name & Task
+-----------
+Registry key: catboost_history
+Task type: Ordinal regression (fatigue_num, 0-5)
+
+
+Purpose
+-------
+CatBoost on same-day features plus seven leakage-safe history columns.
+Tests whether explicit fatigue/activity memory helps without a hybrid
+residual decomposition.
+
+
+Algorithm & Library
+-------------------
+catboost.CatBoostRegressor (RMSE loss)
+Wrapped in OrdinalRegressorWrapper (clip predictions to [0, 5])
+
+
+Source Code
+-----------
+Builder: build_catboost_history() in src/modeling/models/ordinal.py
+History features: compute_history_features() in src/modeling/data.py
+Registry: HISTORY_ORDINAL_MODELS in src/modeling/registry.py
+Training data: bundle.X_train_val_history_tree / bundle.X_test_history_tree
+
+
+Input Format
+------------
+Tree-encoded DataFrame = make_feature_matrix() + HISTORY_FEATURES:
+  fatigue_lag1, fatigue_expanding_mean, fatigue_ewma,
+  active_minutes_roll3_mean, calories_sum_roll3_mean,
+  very_roll3_mean, fatigue_delta_lag1
+
+
+Preprocessing
+-------------
+Phase one-hot via build_tree_matrix().
+History columns computed per participant from prior days only (shift(1)
+before rolling/EWMA). First-day NaNs left missing; CatBoost handles NaN.
+
+
+Default Hyperparameters
+-----------------------
+Same as catboost_ordinal:
+  iterations=300, depth=6, learning_rate=0.05, l2_leaf_reg=3.0
+
+
+Optuna Search Space
+-------------------
+Same as catboost_ordinal:
+  iterations [100, 500], depth [4, 10],
+  learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]
+
+
+Training Flow
+-------------
+1. Optuna minimizes mean CV MAE (5 GroupKFold folds by participant).
+2. Fit on full train_val history tree matrix; evaluate on test.
+
+
+Prediction & Post-processing
+------------------------------
+Continuous prediction clipped to [0, 5] via OrdinalRegressorWrapper.
+
+
+Evaluation Protocol
+-------------------
+CV objective: MAE
+Compare test MAE vs expanding_mean (~0.84) and catboost_ordinal (~1.07)
+
+
+Known Limitations
+-----------------
+History features overlap with persistence baselines; may not beat
+expanding_mean even if better than plain catboost_ordinal.
+EWMA alpha fixed at 0.3 (EWMA_ALPHA in config).

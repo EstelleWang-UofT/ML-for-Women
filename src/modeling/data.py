@@ -8,12 +8,16 @@ import pandas as pd
 from modeling.config import (
     CATEGORICAL_FEATURES,
     DATA_PATH,
+    EWMA_ALPHA,
     FEATURE_COLUMNS,
     HIGH_FATIGUE_THRESHOLD,
+    HISTORY_FEATURES,
     NUMERIC_FEATURES,
     PHASE_ORDER,
     PHASE_TO_IDX,
+    PRIOR_COL,
     RANDOM_STATE,
+    ROLLING_WINDOW,
     SEQUENCE_FEATURE_COLUMNS,
     TEST_SIZE,
 )
@@ -40,6 +44,12 @@ class SplitBundle:
     X_test: pd.DataFrame
     X_train_val_tree: pd.DataFrame
     X_test_tree: pd.DataFrame
+    X_train_val_history: pd.DataFrame
+    X_test_history: pd.DataFrame
+    X_train_val_history_tree: pd.DataFrame
+    X_test_history_tree: pd.DataFrame
+    X_train_val_hybrid: pd.DataFrame
+    X_test_hybrid: pd.DataFrame
     y_ord_train_val: pd.Series
     y_ord_test: pd.Series
     y_clf_train_val: pd.Series
@@ -163,6 +173,117 @@ def compute_expanding_mean_prior(
     return expanding.reindex(df.index)
 
 
+def compute_fatigue_lag2(
+    df,
+    group_col="id",
+    time_col="day_in_study",
+    target_col="fatigue_num",
+):
+    """Fatigue from two days ago per participant (NaN on first two days)."""
+    ordered = df.sort_values([group_col, time_col])
+    lag2 = ordered.groupby(group_col)[target_col].shift(2)
+    return lag2.reindex(df.index)
+
+
+def compute_fatigue_ewma_prior(
+    df,
+    alpha=EWMA_ALPHA,
+    group_col="id",
+    time_col="day_in_study",
+    target_col="fatigue_num",
+):
+    """EWMA of prior fatigue per participant (NaN until first prior day exists)."""
+    ordered = df.sort_values([group_col, time_col])
+    ewma = ordered.groupby(group_col)[target_col].transform(
+        lambda s: s.shift(1).ewm(alpha=alpha, adjust=False).mean()
+    )
+    return ewma.reindex(df.index)
+
+
+def compute_fatigue_delta_lag1(
+    df,
+    group_col="id",
+    time_col="day_in_study",
+    target_col="fatigue_num",
+):
+    """Change in fatigue from two days ago to yesterday (lag1 - lag2)."""
+    lag1 = compute_fatigue_lag1(df, group_col, time_col, target_col)
+    lag2 = compute_fatigue_lag2(df, group_col, time_col, target_col)
+    return lag1 - lag2
+
+
+def compute_rolling_mean_prior(
+    df,
+    col,
+    window=ROLLING_WINDOW,
+    group_col="id",
+    time_col="day_in_study",
+):
+    """Rolling mean of a column over prior days within each participant."""
+    ordered = df.sort_values([group_col, time_col])
+    rolled = ordered.groupby(group_col)[col].transform(
+        lambda s: s.shift(1).rolling(window=window, min_periods=1).mean()
+    )
+    return rolled.reindex(df.index)
+
+
+def compute_active_minutes(df):
+    return df["lightly"] + df["moderately"] + df["very"]
+
+
+def compute_history_features(
+    df,
+    group_col="id",
+    time_col="day_in_study",
+    target_col="fatigue_num",
+):
+    """Return leakage-safe history columns aligned to df.index."""
+    active = compute_active_minutes(df)
+    work = pd.DataFrame(index=df.index)
+    work["fatigue_lag1"] = compute_fatigue_lag1(df, group_col, time_col, target_col)
+    work["fatigue_expanding_mean"] = compute_expanding_mean_prior(
+        df, group_col, time_col, target_col
+    )
+    work["fatigue_ewma"] = compute_fatigue_ewma_prior(df, EWMA_ALPHA, group_col, time_col, target_col)
+    active_df = df.assign(_active_minutes=active)
+    work["active_minutes_roll3_mean"] = compute_rolling_mean_prior(
+        active_df,
+        "_active_minutes",
+        ROLLING_WINDOW,
+        group_col,
+        time_col,
+    )
+    work["calories_sum_roll3_mean"] = compute_rolling_mean_prior(
+        df, "calories_sum", ROLLING_WINDOW, group_col, time_col
+    )
+    work["very_roll3_mean"] = compute_rolling_mean_prior(
+        df, "very", ROLLING_WINDOW, group_col, time_col
+    )
+    work["fatigue_delta_lag1"] = compute_fatigue_delta_lag1(
+        df, group_col, time_col, target_col
+    )
+    return work[HISTORY_FEATURES]
+
+
+def make_feature_matrix_with_history(data):
+    X = make_feature_matrix(data)
+    history = compute_history_features(data)
+    return pd.concat([X, history], axis=1)
+
+
+def attach_prior_frame(X, prior_series, col=PRIOR_COL):
+    out = X.copy()
+    out[col] = prior_series.values if hasattr(prior_series, "values") else prior_series
+    return out
+
+
+def build_hybrid_residual_matrix(X_history, prior_series, prior_col=PRIOR_COL):
+    """Tree matrix for hybrid models: drop expanding mean from X, attach prior column."""
+    out = X_history.drop(columns=["fatigue_expanding_mean"], errors="ignore")
+    out_tree = build_tree_matrix(out)
+    return attach_prior_frame(out_tree, prior_series, col=prior_col)
+
+
 def _encode_phase_series(phase_series):
     return phase_series.map(PHASE_TO_IDX).fillna(0).astype(int)
 
@@ -260,6 +381,7 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
     test_mask = df["id"].isin(test_ids)
 
     X_all = make_feature_matrix(df)
+    X_all_history = make_feature_matrix_with_history(df)
     seq_all = build_sequence_tensors(df)
 
     X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
@@ -267,10 +389,20 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
     X_train_val_tree = build_tree_matrix(X_train_val)
     X_test_tree = build_tree_matrix(X_test)
 
+    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
+    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
+    X_train_val_history_tree = build_tree_matrix(X_train_val_history)
+    X_test_history_tree = build_tree_matrix(X_test_history)
+
     y_ordinal = df["fatigue_num"].astype(int)
     y_high_fatigue = (df["fatigue_num"] >= HIGH_FATIGUE_THRESHOLD).astype(int)
     y_lag1 = compute_fatigue_lag1(df)
     y_expanding = compute_expanding_mean_prior(df)
+
+    y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
+    y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
+    X_train_val_hybrid = build_hybrid_residual_matrix(X_train_val_history, y_expanding_train_val)
+    X_test_hybrid = build_hybrid_residual_matrix(X_test_history, y_expanding_test)
 
     return SplitBundle(
         df=df,
@@ -282,6 +414,12 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
         X_test=X_test,
         X_train_val_tree=X_train_val_tree,
         X_test_tree=X_test_tree,
+        X_train_val_history=X_train_val_history,
+        X_test_history=X_test_history,
+        X_train_val_history_tree=X_train_val_history_tree,
+        X_test_history_tree=X_test_history_tree,
+        X_train_val_hybrid=X_train_val_hybrid,
+        X_test_hybrid=X_test_hybrid,
         y_ord_train_val=y_ordinal.loc[train_val_mask].reset_index(drop=True),
         y_ord_test=y_ordinal.loc[test_mask].reset_index(drop=True),
         y_clf_train_val=y_high_fatigue.loc[train_val_mask].reset_index(drop=True),
@@ -290,8 +428,8 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
         groups_test=df.loc[test_mask, "id"].reset_index(drop=True),
         y_lag1_train_val=y_lag1.loc[train_val_mask].reset_index(drop=True),
         y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
-        y_expanding_train_val=y_expanding.loc[train_val_mask].reset_index(drop=True),
-        y_expanding_test=y_expanding.loc[test_mask].reset_index(drop=True),
+        y_expanding_train_val=y_expanding_train_val,
+        y_expanding_test=y_expanding_test,
         seq_train_val=_subset_sequence_data(seq_all, train_val_mask.values),
         seq_test=_subset_sequence_data(seq_all, test_mask.values),
     )

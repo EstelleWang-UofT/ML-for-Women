@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator
 
 from modeling.config import N_CV_FOLDS
+from modeling.data import attach_prior_frame
 from modeling.metrics import clip_ordinal_predictions
 
 
@@ -114,12 +115,6 @@ CLASSIFICATION_BASELINES = {
 }
 
 
-def _attach_prior_frame(X, prior_series, col="__prior__"):
-    out = X.copy()
-    out[col] = prior_series.values if hasattr(prior_series, "values") else prior_series
-    return out
-
-
 def add_delta_vs_baseline(summary_df, baseline_name, metric_cols, task="ordinal", prefix="test"):
     """Add delta columns vs a named baseline row (negative delta on MAE = improvement)."""
     out = summary_df.copy()
@@ -161,8 +156,8 @@ def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_
     factory = builder
 
     if task == "ordinal" and name == "lag1_fatigue":
-        X_train_val = _attach_prior_frame(bundle.X_train_val, bundle.y_lag1_train_val)
-        X_test = _attach_prior_frame(bundle.X_test, bundle.y_lag1_test)
+        X_train_val = attach_prior_frame(bundle.X_train_val, bundle.y_lag1_train_val)
+        X_test = attach_prior_frame(bundle.X_test, bundle.y_lag1_test)
         return run_model_benchmark(
             name=name,
             model_factory=factory,
@@ -177,8 +172,8 @@ def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_
         )
 
     if task == "ordinal" and name == "expanding_mean":
-        X_train_val = _attach_prior_frame(bundle.X_train_val, bundle.y_expanding_train_val)
-        X_test = _attach_prior_frame(bundle.X_test, bundle.y_expanding_test)
+        X_train_val = attach_prior_frame(bundle.X_train_val, bundle.y_expanding_train_val)
+        X_test = attach_prior_frame(bundle.X_test, bundle.y_expanding_test)
         return run_model_benchmark(
             name=name,
             model_factory=factory,

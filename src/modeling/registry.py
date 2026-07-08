@@ -1,8 +1,10 @@
 """Model registry and Optuna search spaces."""
 
 from modeling.models.classification import build_lightgbm_classifier, build_rf_classifier
+from modeling.models.hybrid import build_catboost_residual_expanding
 from modeling.models.ordinal import (
     attach_groups,
+    build_catboost_history,
     build_catboost_ordinal,
     build_mixed_effects,
     build_ordered_logistic,
@@ -18,6 +20,11 @@ ORDINAL_MODELS = {
     "lstm": build_lstm,
 }
 
+HISTORY_ORDINAL_MODELS = {
+    "catboost_history": build_catboost_history,
+    "catboost_residual_expanding": build_catboost_residual_expanding,
+}
+
 CLASSIFICATION_MODELS = {
     "lightgbm": build_lightgbm_classifier,
     "random_forest": build_rf_classifier,
@@ -26,6 +33,17 @@ CLASSIFICATION_MODELS = {
 SEQUENCE_MODELS = {"lstm"}
 MIXED_EFFECTS_MODELS = {"mixed_effects"}
 TREE_ORDINAL_MODELS = {"ordinal_rf", "catboost_ordinal"}
+HISTORY_TREE_ORDINAL_MODELS = {"catboost_history"}
+RESIDUAL_ORDINAL_MODELS = {"catboost_residual_expanding"}
+
+
+def _catboost_search_space(trial):
+    return {
+        "iterations": trial.suggest_int("iterations", 100, 500),
+        "depth": trial.suggest_int("depth", 4, 10),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+        "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0),
+    }
 
 
 def resolve_training_data(name, bundle, task="ordinal"):
@@ -60,6 +78,24 @@ def resolve_training_data(name, bundle, task="ordinal"):
             "groups": bundle.groups_train_val,
         }
 
+    if name in RESIDUAL_ORDINAL_MODELS:
+        return {
+            "X_train_val": bundle.X_train_val_hybrid,
+            "X_test": bundle.X_test_hybrid,
+            "y_train_val": bundle.y_ord_train_val,
+            "y_test": bundle.y_ord_test,
+            "groups": bundle.groups_train_val,
+        }
+
+    if name in HISTORY_TREE_ORDINAL_MODELS:
+        return {
+            "X_train_val": bundle.X_train_val_history_tree,
+            "X_test": bundle.X_test_history_tree,
+            "y_train_val": bundle.y_ord_train_val,
+            "y_test": bundle.y_ord_test,
+            "groups": bundle.groups_train_val,
+        }
+
     if name in TREE_ORDINAL_MODELS:
         return {
             "X_train_val": bundle.X_train_val_tree,
@@ -88,12 +124,9 @@ def get_search_space(name):
             "max_depth": trial.suggest_int("max_depth", 3, 20),
             "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
         },
-        "catboost_ordinal": lambda trial: {
-            "iterations": trial.suggest_int("iterations", 100, 500),
-            "depth": trial.suggest_int("depth", 4, 10),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0),
-        },
+        "catboost_ordinal": _catboost_search_space,
+        "catboost_history": _catboost_search_space,
+        "catboost_residual_expanding": _catboost_search_space,
         "mixed_effects": lambda trial: {
             "maxiter": trial.suggest_int("maxiter", 200, 800),
         },

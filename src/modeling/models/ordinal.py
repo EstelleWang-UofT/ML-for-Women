@@ -77,7 +77,41 @@ def build_catboost_ordinal(
     **kwargs,
 ):
     del kwargs
-    model = CatBoostRegressor(
+    return OrdinalRegressorWrapper(
+        _make_catboost_regressor(
+            iterations=iterations,
+            depth=depth,
+            learning_rate=learning_rate,
+            l2_leaf_reg=l2_leaf_reg,
+        )
+    )
+
+
+def build_catboost_history(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+    **kwargs,
+):
+    del kwargs
+    return OrdinalRegressorWrapper(
+        _make_catboost_regressor(
+            iterations=iterations,
+            depth=depth,
+            learning_rate=learning_rate,
+            l2_leaf_reg=l2_leaf_reg,
+        )
+    )
+
+
+def _make_catboost_regressor(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+):
+    return CatBoostRegressor(
         loss_function="RMSE",
         iterations=iterations,
         depth=depth,
@@ -86,7 +120,6 @@ def build_catboost_ordinal(
         random_state=RANDOM_STATE,
         verbose=0,
     )
-    return OrdinalRegressorWrapper(model)
 
 
 def build_mixed_effects(maxiter=400, **kwargs):
