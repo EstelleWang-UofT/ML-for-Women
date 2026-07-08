@@ -56,6 +56,7 @@ def _make_catboost_regressor(
         l2_leaf_reg=l2_leaf_reg,
         random_state=RANDOM_STATE,
         verbose=0,
+        train_dir=None,
     )
 
 

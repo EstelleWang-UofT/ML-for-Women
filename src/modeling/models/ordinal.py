@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import mord
-from catboost import CatBoostRegressor
+from catboost import CatBoostClassifier, CatBoostRegressor
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
@@ -92,16 +92,19 @@ def build_catboost_history(
     depth=6,
     learning_rate=0.05,
     l2_leaf_reg=3.0,
+    loss_mode="rmse",
     **kwargs,
 ):
     del kwargs
-    return OrdinalRegressorWrapper(
-        _make_catboost_regressor(
+    return CatBoostOrdinalWrapper(
+        _make_catboost_model(
+            loss_mode=loss_mode,
             iterations=iterations,
             depth=depth,
             learning_rate=learning_rate,
             l2_leaf_reg=l2_leaf_reg,
-        )
+        ),
+        loss_mode=loss_mode,
     )
 
 
@@ -119,7 +122,29 @@ def _make_catboost_regressor(
         l2_leaf_reg=l2_leaf_reg,
         random_state=RANDOM_STATE,
         verbose=0,
+        train_dir=None,
     )
+
+
+def _make_catboost_model(
+    loss_mode="rmse",
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+):
+    common = {
+        "iterations": iterations,
+        "depth": depth,
+        "learning_rate": learning_rate,
+        "l2_leaf_reg": l2_leaf_reg,
+        "random_state": RANDOM_STATE,
+        "verbose": 0,
+        "train_dir": None,
+    }
+    if loss_mode == "multiclass":
+        return CatBoostClassifier(loss_function="MultiClass", **common)
+    return CatBoostRegressor(loss_function="RMSE", **common)
 
 
 def build_mixed_effects(maxiter=400, **kwargs):
@@ -137,6 +162,27 @@ class OrdinalRegressorWrapper(BaseEstimator):
 
     def predict(self, X):
         preds = self.regressor.predict(X)
+        return clip_ordinal_predictions(preds)
+
+
+class CatBoostOrdinalWrapper(BaseEstimator):
+    """CatBoost ordinal model with RMSE regression or MultiClass + expected value."""
+
+    def __init__(self, model, loss_mode="rmse"):
+        self.model = model
+        self.loss_mode = loss_mode
+
+    def fit(self, X, y):
+        self.model.fit(X, y)
+        return self
+
+    def predict(self, X):
+        if self.loss_mode == "multiclass":
+            probs = self.model.predict_proba(X)
+            classes = np.asarray(self.model.classes_, dtype=float)
+            expected = probs @ classes
+            return clip_ordinal_predictions(expected)
+        preds = self.model.predict(X)
         return clip_ordinal_predictions(preds)
 
 

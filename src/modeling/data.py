@@ -48,8 +48,6 @@ class SplitBundle:
     X_test_history: pd.DataFrame
     X_train_val_history_tree: pd.DataFrame
     X_test_history_tree: pd.DataFrame
-    X_train_val_hybrid: pd.DataFrame
-    X_test_hybrid: pd.DataFrame
     y_ord_train_val: pd.Series
     y_ord_test: pd.Series
     y_clf_train_val: pd.Series
@@ -236,28 +234,37 @@ def compute_history_features(
     group_col="id",
     time_col="day_in_study",
     target_col="fatigue_num",
+    ewma_alpha=None,
+    rolling_window=None,
 ):
     """Return leakage-safe history columns aligned to df.index."""
+    if ewma_alpha is None:
+        ewma_alpha = EWMA_ALPHA
+    if rolling_window is None:
+        rolling_window = ROLLING_WINDOW
+
     active = compute_active_minutes(df)
     work = pd.DataFrame(index=df.index)
     work["fatigue_lag1"] = compute_fatigue_lag1(df, group_col, time_col, target_col)
     work["fatigue_expanding_mean"] = compute_expanding_mean_prior(
         df, group_col, time_col, target_col
     )
-    work["fatigue_ewma"] = compute_fatigue_ewma_prior(df, EWMA_ALPHA, group_col, time_col, target_col)
+    work["fatigue_ewma"] = compute_fatigue_ewma_prior(
+        df, ewma_alpha, group_col, time_col, target_col
+    )
     active_df = df.assign(_active_minutes=active)
     work["active_minutes_roll3_mean"] = compute_rolling_mean_prior(
         active_df,
         "_active_minutes",
-        ROLLING_WINDOW,
+        rolling_window,
         group_col,
         time_col,
     )
     work["calories_sum_roll3_mean"] = compute_rolling_mean_prior(
-        df, "calories_sum", ROLLING_WINDOW, group_col, time_col
+        df, "calories_sum", rolling_window, group_col, time_col
     )
     work["very_roll3_mean"] = compute_rolling_mean_prior(
-        df, "very", ROLLING_WINDOW, group_col, time_col
+        df, "very", rolling_window, group_col, time_col
     )
     work["fatigue_delta_lag1"] = compute_fatigue_delta_lag1(
         df, group_col, time_col, target_col
@@ -265,10 +272,31 @@ def compute_history_features(
     return work[HISTORY_FEATURES]
 
 
-def make_feature_matrix_with_history(data):
+def make_feature_matrix_with_history(data, ewma_alpha=None, rolling_window=None):
     X = make_feature_matrix(data)
-    history = compute_history_features(data)
+    history = compute_history_features(
+        data, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+    )
     return pd.concat([X, history], axis=1)
+
+
+def build_history_tree_matrices(
+    df,
+    train_val_mask,
+    test_mask,
+    ewma_alpha=None,
+    rolling_window=None,
+):
+    """Build tree-encoded history feature matrices for train/val and test splits."""
+    X_all_history = make_feature_matrix_with_history(
+        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+    )
+    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
+    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
+    return (
+        build_tree_matrix(X_train_val_history),
+        build_tree_matrix(X_test_history),
+    )
 
 
 def attach_prior_frame(X, prior_series, col=PRIOR_COL):
@@ -282,6 +310,28 @@ def build_hybrid_residual_matrix(X_history, prior_series, prior_col=PRIOR_COL):
     out = X_history.drop(columns=["fatigue_expanding_mean"], errors="ignore")
     out_tree = build_tree_matrix(out)
     return attach_prior_frame(out_tree, prior_series, col=prior_col)
+
+
+def build_hybrid_tree_matrices(
+    df,
+    train_val_mask,
+    test_mask,
+    ewma_alpha=None,
+    rolling_window=None,
+):
+    """Build tree-encoded hybrid feature matrices for train/val and test splits."""
+    X_all_history = make_feature_matrix_with_history(
+        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+    )
+    y_expanding = compute_expanding_mean_prior(df)
+    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
+    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
+    y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
+    y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
+    return (
+        build_hybrid_residual_matrix(X_train_val_history, y_expanding_train_val),
+        build_hybrid_residual_matrix(X_test_history, y_expanding_test),
+    )
 
 
 def _encode_phase_series(phase_series):
@@ -367,7 +417,19 @@ def _subset_sequence_data(seq_data: SequenceData, mask: np.ndarray) -> SequenceD
     )
 
 
-def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
+def prepare_splits(
+    df,
+    test_size=TEST_SIZE,
+    seed=RANDOM_STATE,
+    stratify=True,
+    ewma_alpha=None,
+    rolling_window=None,
+):
+    if ewma_alpha is None:
+        ewma_alpha = EWMA_ALPHA
+    if rolling_window is None:
+        rolling_window = ROLLING_WINDOW
+
     strata = participant_strata(df) if stratify else None
     train_val_ids, test_ids = split_participant_ids(
         df["id"].unique(),
@@ -381,7 +443,9 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
     test_mask = df["id"].isin(test_ids)
 
     X_all = make_feature_matrix(df)
-    X_all_history = make_feature_matrix_with_history(df)
+    X_all_history = make_feature_matrix_with_history(
+        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+    )
     seq_all = build_sequence_tensors(df)
 
     X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
@@ -401,8 +465,6 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
 
     y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
     y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
-    X_train_val_hybrid = build_hybrid_residual_matrix(X_train_val_history, y_expanding_train_val)
-    X_test_hybrid = build_hybrid_residual_matrix(X_test_history, y_expanding_test)
 
     return SplitBundle(
         df=df,
@@ -418,8 +480,6 @@ def prepare_splits(df, test_size=TEST_SIZE, seed=RANDOM_STATE, stratify=True):
         X_test_history=X_test_history,
         X_train_val_history_tree=X_train_val_history_tree,
         X_test_history_tree=X_test_history_tree,
-        X_train_val_hybrid=X_train_val_hybrid,
-        X_test_hybrid=X_test_hybrid,
         y_ord_train_val=y_ordinal.loc[train_val_mask].reset_index(drop=True),
         y_ord_test=y_ordinal.loc[test_mask].reset_index(drop=True),
         y_clf_train_val=y_high_fatigue.loc[train_val_mask].reset_index(drop=True),

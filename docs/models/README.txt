@@ -54,7 +54,9 @@ History features (HISTORY_FEATURES — past days only, per participant):
   active_minutes_roll3_mean, calories_sum_roll3_mean,
   very_roll3_mean, fatigue_delta_lag1
 
-Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3, PRIOR_COL="__prior__"
+Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (defaults; tuned for catboost_history),
+  EWMA_ALPHA_RANGE=(0.1, 0.5), ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
+  STABILITY_SEEDS=[42..51], PRIOR_COL="__prior__"
 
 
 TRAIN / TEST SPLIT
@@ -69,8 +71,7 @@ Function: modeling.data.prepare_splits(stratify=True by default)
 4. All rows from held-out participants go to test; no row-level leakage.
 
 SplitBundle exposes train/val matrices, tree-encoded matrices, history
-matrices (X_*_history_tree), hybrid residual matrices (X_*_hybrid with
-__prior__), sequence tensors, lag1/expanding priors, and group columns.
+matrices (X_*_history_tree), sequence tensors, lag1/expanding priors, and group columns.
 
 
 CROSS-VALIDATION
@@ -144,8 +145,11 @@ NOTEBOOK
 
 End-to-end pipeline: notebooks/physical activity/fatigue_modeling.ipynb
 Baselines run in section 1b; tuned models in section 2+.
-Section 2a tunes catboost_history and catboost_residual_expanding.
+Section 2 History tunes catboost_history and catboost_residual_expanding.
+Section 4.5 runs repeated-seed stability study (validation.py) on expanding_mean,
+  catboost_history, and catboost_residual_expanding.
 Delta columns compare test metrics vs expanding_mean and lag1_fatigue.
+Stability summary also includes delta vs catboost_history.
 
 Hybrid formula (catboost_residual_expanding):
   prediction = clip(expanding_mean + CatBoost_residual)

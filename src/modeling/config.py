@@ -55,15 +55,11 @@ HISTORY_FEATURES = [
     "fatigue_delta_lag1",
 ]
 
-HYBRID_HISTORY_FEATURES = [
-    "fatigue_lag1",
-    "fatigue_ewma",
-    "fatigue_delta_lag1",
-    "active_minutes_roll3_mean",
-    "calories_sum_roll3_mean",
-    "very_roll3_mean",
-]
-
 EWMA_ALPHA = 0.3
 ROLLING_WINDOW = 3
+EWMA_ALPHA_RANGE = (0.1, 0.5)
+ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
 PRIOR_COL = "__prior__"
+
+STABILITY_SEEDS = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
+STABILITY_MODELS = ["expanding_mean", "catboost_history", "catboost_residual_expanding"]
