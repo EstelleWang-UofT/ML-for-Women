@@ -115,23 +115,6 @@ CLASSIFICATION_BASELINES = {
 }
 
 
-def add_delta_vs_baseline(summary_df, baseline_name, metric_cols, task="ordinal", prefix="test"):
-    """Add delta columns vs a named baseline row (negative delta on MAE = improvement)."""
-    out = summary_df.copy()
-    lower_is_better = {"mae", "rmse"}
-    for metric in metric_cols:
-        col = f"{prefix}_{metric}"
-        delta_col = f"delta_{metric}_vs_{baseline_name}"
-        if baseline_name not in out.index or col not in out.columns:
-            continue
-        baseline_value = out.loc[baseline_name, col]
-        delta = out[col] - baseline_value
-        if metric not in lower_is_better and task == "classification":
-            delta = baseline_value - out[col]
-        out[delta_col] = delta
-    return out
-
-
 def summarize_baseline_metrics(results, task="ordinal"):
     metric_cols = ["mae", "rmse", "r2", "qwk"] if task == "ordinal" else [
         "accuracy",

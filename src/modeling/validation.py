@@ -94,26 +94,8 @@ def run_stability_study(
     return pd.DataFrame(rows)
 
 
-def _add_delta_vs_reference(summary, stability_df, reference_model, prefix):
-    if reference_model not in summary.index:
-        return
-
-    reference_mae = summary.loc[reference_model, "test_mae_mean"]
-    summary[f"delta_mae_vs_{prefix}_mean"] = summary["test_mae_mean"] - reference_mae
-
-    reference_by_seed = (
-        stability_df.loc[stability_df["model"] == reference_model, ["seed", "test_mae"]]
-        .rename(columns={"test_mae": "reference_mae"})
-        .set_index("seed")
-    )
-    merged = stability_df.merge(reference_by_seed, left_on="seed", right_index=True)
-    merged["delta_mae"] = merged["test_mae"] - merged["reference_mae"]
-    delta_std = merged.groupby("model")["delta_mae"].std().reindex(summary.index)
-    summary[f"delta_mae_vs_{prefix}_std"] = delta_std
-
-
 def summarize_stability(stability_df):
-    """Aggregate per-model test MAE across seeds and deltas vs baselines."""
+    """Aggregate per-model test MAE across seeds."""
     if stability_df.empty:
         return pd.DataFrame()
 
@@ -130,9 +112,4 @@ def summarize_stability(stability_df):
         }
         summary_rows.append(row)
 
-    summary = pd.DataFrame(summary_rows).set_index("model")
-
-    _add_delta_vs_reference(summary, stability_df, "expanding_mean", "expanding_mean")
-    _add_delta_vs_reference(summary, stability_df, "catboost_history", "catboost_history")
-
-    return summary
+    return pd.DataFrame(summary_rows).set_index("model")

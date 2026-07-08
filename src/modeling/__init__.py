@@ -14,7 +14,7 @@ from modeling.config import (
 from modeling.cv import evaluate_on_test, run_group_cv, run_model_benchmark
 from modeling.data import load_fatigue_data, prepare_splits, split_summary_table
 from modeling.metrics import compute_metrics
-from modeling.baselines import add_delta_vs_baseline, run_all_baseline_benchmarks, summarize_baseline_metrics
+from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
 from modeling.registry import CLASSIFICATION_MODELS, ORDINAL_MODELS, get_search_space
 from modeling.runner import tune_and_benchmark_model
 from modeling.tuning import tune_all_models, tune_model
@@ -34,7 +34,6 @@ __all__ = [
     "compute_metrics",
     "evaluate_on_test",
     "get_search_space",
-    "add_delta_vs_baseline",
     "load_fatigue_data",
     "prepare_splits",
     "run_all_baseline_benchmarks",
