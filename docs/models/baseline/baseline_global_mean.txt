@@ -1,0 +1,76 @@
+Baseline: global_mean
+=======================
+
+Name & Task
+-----------
+Registry key: global_mean
+Task type: Ordinal baseline (fatigue_num, 0–5)
+
+
+Purpose
+-------
+Simplest sanity check: predict the same fatigue level for every row using
+the rounded mean of the training target.
+
+
+Algorithm & Library
+-------------------
+Custom sklearn estimator: GlobalMeanBaseline
+No external ML library beyond numpy/sklearn.base
+
+
+Source Code
+-----------
+Class: GlobalMeanBaseline in src/modeling/baselines.py
+Builder: build_global_mean_baseline()
+Registry: ORDINAL_BASELINES["global_mean"]
+Benchmark runner: run_baseline_benchmark() / run_all_baseline_benchmarks()
+
+
+Input Format
+------------
+Tabular X_train_val / X_test from SplitBundle (features ignored at predict;
+only row count matters).
+
+
+Preprocessing
+-------------
+None. Target y used only in fit.
+
+
+Default Hyperparameters
+-----------------------
+None (no tunable parameters).
+
+
+Optuna Search Space
+-------------------
+None. best_params = {} in benchmark results.
+
+
+Training Flow
+-------------
+fit(X, y):
+  value_ = int(round(mean(y)))
+predict(X):
+  return array of length len(X) filled with value_
+
+Evaluated via same GroupKFold CV and held-out test as tuned models.
+
+
+Prediction & Post-processing
+------------------------------
+Constant integer prediction per row; already in valid ordinal range.
+
+
+Evaluation Protocol
+-------------------
+CV and test: MAE, RMSE, R2, QWK
+Typical test MAE ~1.32 (worse than persistence baselines)
+
+
+Known Limitations
+-----------------
+Ignores all features and participant identity.
+Useful lower bound for "does the model beat the global average?"
+Compare using delta_mae_vs_lag1_fatigue in notebook summaries.

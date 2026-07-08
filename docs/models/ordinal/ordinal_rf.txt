@@ -1,0 +1,84 @@
+Model: ordinal_rf
+=================
+
+Name & Task
+-----------
+Registry key: ordinal_rf
+Task type: Ordinal regression (fatigue_num, 0–5)
+
+
+Purpose
+-------
+Nonlinear tree ensemble treating ordinal target as continuous regression,
+with predictions clipped back to valid fatigue levels. Captures feature
+interactions without explicit ordinal loss.
+
+
+Algorithm & Library
+-------------------
+sklearn.ensemble.RandomForestRegressor
+Wrapped in OrdinalRegressorWrapper (src/modeling/models/ordinal.py)
+
+
+Source Code
+-----------
+Builder: build_ordinal_rf() in src/modeling/models/ordinal.py
+Wrapper: OrdinalRegressorWrapper — clips regressor output to [0, 5]
+Registry: TREE_ORDINAL_MODELS in src/modeling/registry.py
+Training data: bundle.X_train_val_tree / bundle.X_test_tree
+
+
+Input Format
+------------
+Tree-encoded DataFrame from build_tree_matrix():
+  phase column expanded to one-hot dummy columns (phase_Menstrual, etc.)
+  All other features unchanged from make_feature_matrix()
+
+
+Preprocessing
+-------------
+No scaling inside the model. Phase one-hot encoding applied in
+build_tree_matrix() before fit.
+
+
+Default Hyperparameters
+-----------------------
+n_estimators = 300
+max_depth = None
+min_samples_leaf = 1
+random_state = 42 (RANDOM_STATE)
+n_jobs = -1
+
+
+Optuna Search Space
+-------------------
+n_estimators: int, [100, 500]
+max_depth: int, [3, 20]
+min_samples_leaf: int, [1, 10]
+
+
+Training Flow
+-------------
+1. Optuna minimizes mean CV MAE.
+2. RandomForestRegressor.fit on tree matrix.
+3. No internal validation split.
+
+
+Prediction & Post-processing
+------------------------------
+regressor.predict() then clip_ordinal_predictions():
+  round, clip to [0, 5], cast to int
+  (modeling.metrics.clip_ordinal_predictions)
+
+
+Evaluation Protocol
+-------------------
+CV objective: MAE
+Test metrics: MAE, RMSE, R2, QWK
+
+
+Known Limitations
+-----------------
+Ordinal treated as regression; no monotonicity constraint across classes.
+Test performance generally below lag1_fatigue and expanding_mean baselines.
+Tree matrix is wider than raw matrix due to phase dummies.

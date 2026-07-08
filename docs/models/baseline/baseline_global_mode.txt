@@ -1,0 +1,73 @@
+Baseline: global_mode
+=====================
+
+Name & Task
+-----------
+Registry key: global_mode
+Task type: Ordinal baseline (fatigue_num, 0–5)
+
+
+Purpose
+-------
+Predict the most frequent fatigue level in the training set for every row.
+Often matches a common rating (e.g. mode fatigue level).
+
+
+Algorithm & Library
+-------------------
+Custom sklearn estimator: GlobalModeBaseline
+
+
+Source Code
+-----------
+Class: GlobalModeBaseline in src/modeling/baselines.py
+Builder: build_global_mode_baseline()
+Registry: ORDINAL_BASELINES["global_mode"]
+
+
+Input Format
+------------
+Tabular SplitBundle matrices; features unused.
+
+
+Preprocessing
+-------------
+None.
+
+
+Default Hyperparameters
+-----------------------
+None.
+
+
+Optuna Search Space
+-------------------
+None.
+
+
+Training Flow
+-------------
+fit(X, y):
+  value_ = mode of y (argmax of value counts)
+predict(X):
+  constant array of value_
+
+Same CV/test protocol as tuned ordinal models.
+
+
+Prediction & Post-processing
+------------------------------
+Single integer class; no clipping applied (mode is always valid).
+
+
+Evaluation Protocol
+-------------------
+CV and test: MAE, RMSE, R2, QWK
+Typical test MAE ~0.99
+
+
+Known Limitations
+-----------------
+Ignores features and temporal structure.
+LSTM previously collapsed toward this behavior before training fixes.
+Worse than lag1_fatigue and expanding_mean on test MAE.

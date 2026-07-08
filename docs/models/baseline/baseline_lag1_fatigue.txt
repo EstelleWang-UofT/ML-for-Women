@@ -1,0 +1,78 @@
+Baseline: lag1_fatigue
+======================
+
+Name & Task
+-----------
+Registry key: lag1_fatigue
+Task type: Ordinal baseline (fatigue_num, 0–5)
+
+
+Purpose
+-------
+Persistence baseline: predict yesterday's fatigue rating for the same
+participant. Strong benchmark because fatigue is highly autocorrelated.
+
+
+Algorithm & Library
+-------------------
+Custom: Lag1FatigueBaseline extends PriorValueBaseline
+
+
+Source Code
+-----------
+Classes: Lag1FatigueBaseline, PriorValueBaseline in src/modeling/baselines.py
+Builder: build_lag1_baseline()
+Prior computation: compute_fatigue_lag1() in src/modeling/data.py
+Benchmark: run_baseline_benchmark attaches __prior__ column from
+  bundle.y_lag1_train_val / bundle.y_lag1_test
+
+
+Input Format
+------------
+DataFrame = feature matrix + __prior__ column containing previous-day
+fatigue_num per participant (NaN on each participant's first day).
+
+
+Preprocessing
+-------------
+Prior column computed by sorting on (id, day_in_study) and groupby shift(1).
+At fit: fallback_ = rounded mean of non-NaN priors in training fold (or
+  rounded mean(y) if all NaN).
+At predict: NaN priors replaced with fallback_, then round and clip to [0,5].
+
+
+Default Hyperparameters
+-----------------------
+None.
+
+
+Optuna Search Space
+-------------------
+None.
+
+
+Training Flow
+-------------
+PriorValueBaseline.fit stores fallback only (does not learn from X features).
+run_baseline_benchmark special-cases lag1_fatigue to attach prior series.
+
+Primary reference baseline in notebook: delta_mae_vs_lag1_fatigue.
+
+
+Prediction & Post-processing
+------------------------------
+clip_ordinal_predictions on filled prior values.
+
+
+Evaluation Protocol
+-------------------
+CV and test: MAE, RMSE, R2, QWK
+Typical test MAE ~0.93
+No tuned ordinal model consistently beats this on test in recent runs.
+
+
+Known Limitations
+-----------------
+Undefined (NaN) on first day per participant uses training fallback.
+Cannot predict for brand-new participants without history (uses fallback).
+Does not use activity features — only yesterday's rating.

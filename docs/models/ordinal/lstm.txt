@@ -1,0 +1,111 @@
+Model: lstm
+===========
+
+Name & Task
+-----------
+Registry key: lstm
+Task type: Ordinal regression (fatigue_num, 0–5)
+
+
+Purpose
+-------
+Sequence model using recurrent networks to predict fatigue from each
+participant's activity history up to the current day. Tests whether
+temporal patterns beyond lag-1 persistence help prediction.
+
+
+Algorithm & Library
+-------------------
+PyTorch: nn.LSTM or nn.GRU (selectable via rnn_type)
+Custom: _RNNModule, SequenceClassifier (sklearn BaseEstimator interface)
+
+
+Source Code
+-----------
+Builder: build_lstm() in src/modeling/models/sequence.py
+Sequence construction: build_sequence_tensors() in src/modeling/data.py
+Registry: SEQUENCE_MODELS in src/modeling/registry.py
+Training data: bundle.seq_train_val / bundle.seq_test (SequenceData)
+
+
+Input Format
+------------
+SequenceData dataclass:
+  X: float32 array (n_samples, max_seq_len, n_features), zero-padded
+  lengths: int64 array of true sequence lengths per sample
+  y: int64 target fatigue_num
+  groups: participant ids
+  y_lag1, y_expanding_mean: optional prior columns (not used by LSTM fit)
+
+Each sample is one (participant, day) row: input is all feature rows from
+day 1 through current day for that participant.
+
+
+Preprocessing
+-------------
+Inside SequenceClassifier._scale_features():
+  Per-feature z-score computed over all valid (non-padded) timesteps in
+  training data; same stats applied at predict time.
+
+Phase in sequences: integer index (PHASE_TO_IDX), not string categorical.
+
+
+Default Hyperparameters
+-----------------------
+rnn_type = "lstm"
+hidden_size = 64
+num_layers = 1
+dropout = 0.2
+lr = 1e-3
+batch_size = 64
+epochs = 40
+patience = 8
+val_fraction = 0.15
+max_grad_norm = 1.0
+random_state = 42
+Device: CPU only (torch.device("cpu"))
+
+
+Optuna Search Space
+-------------------
+rnn_type: categorical ["lstm", "gru"]
+hidden_size: int, [32, 128]
+num_layers: int, [1, 2]
+dropout: float, [0.0, 0.5]
+lr: float, log-uniform, [1e-4, 1e-2]
+batch_size: categorical [32, 64, 128]
+epochs: int, [20, 60]
+patience: int, [5, 12]
+
+
+Training Flow
+-------------
+1. Scale features on training sequences.
+2. Build _RNNModule with pack_padded_sequence (variable-length batches).
+3. Loss: CrossEntropyLoss with balanced class weights (compute_class_weight).
+4. Optimizer: Adam.
+5. Internal validation: GroupShuffleSplit (15% of participants) for early
+   stopping; restores best val-loss weights; patience-based stop.
+6. Gradient clipping: max_grad_norm=1.0.
+7. Optuna minimizes mean CV MAE via run_group_cv_sequences (5 folds).
+8. fit(X) expects SequenceData only (y argument ignored).
+
+
+Prediction & Post-processing
+------------------------------
+argmax over 6-class logits (0–5); no additional clipping.
+
+
+Evaluation Protocol
+-------------------
+CV objective: MAE
+Test metrics: MAE, RMSE, R2, QWK
+
+
+Known Limitations
+-----------------
+Worst among tuned ordinal models on recent test runs (~MAE 1.37).
+Small dataset (42 participants) limits sequence model capacity.
+Early stopping val split is inside each CV fold fit, adding variance.
+CPU-only training; no GPU acceleration configured.
+Does not beat simple lag1 or expanding-mean persistence baselines.

@@ -1,0 +1,99 @@
+Model: mixed_effects
+====================
+
+Name & Task
+-----------
+Registry key: mixed_effects
+Task type: Ordinal regression (fatigue_num, 0–5)
+
+Note: Despite the name, this is NOT a mixed-effects / random-intercept model.
+It is a population-level ordered logistic model (statsmodels OrderedModel)
+that generalizes to held-out participants.
+
+
+Purpose
+-------
+Classical ordinal regression on day-varying covariates only, without
+participant ID dummies (which collapsed for unseen participants in an
+earlier implementation).
+
+
+Algorithm & Library
+-------------------
+statsmodels.miscmodels.ordinal_model.OrderedModel (distr="logit")
+Custom wrappers: MixedEffectsOrdinalModel, MixedEffectsOrdinalWrapper
+
+
+Source Code
+-----------
+Builder: build_mixed_effects() in src/modeling/models/ordinal.py
+Group attachment: attach_groups() adds __group__ column for API compatibility
+Registry: MIXED_EFFECTS_MODELS in src/modeling/registry.py
+Training data: attach_groups(X_train_val, groups) and same for X_test
+
+
+Input Format
+------------
+pandas DataFrame with feature columns plus __group__ (participant id).
+Only a subset of features enter the model (see Preprocessing).
+
+
+Preprocessing
+-------------
+Day-varying numeric features (from NUMERIC_FEATURES, excluding participant-
+constant columns):
+  lightly, moderately, very, calories_sum, filtered_demographic_vo2_max,
+  cardio_zone, fat_burn_zone, below_fat_burn_zone, lh_smooth, estrogen_smooth
+
+Excluded participant-constant numerics:
+  age_of_first_menarche, age
+
+Day-varying categorical (encoded as numeric):
+  is_weekend, exerciselevel_num, phase (mapped via PHASE_TO_IDX)
+
+Steps:
+  1. Build exog matrix (_build_exog_raw)
+  2. Median imputation for missing values (fit on train)
+  3. Z-score standardization of continuous columns (fit on train)
+  4. Participant ID dummies are NOT used
+
+
+Default Hyperparameters
+-----------------------
+maxiter = 400  (MLE optimization iteration limit)
+
+
+Optuna Search Space
+-------------------
+maxiter: int, [200, 800]
+
+
+Training Flow
+-------------
+1. Requires groups on fit and predict (ValueError if missing).
+2. Tries fit methods in order: lbfgs, then bfgs.
+3. Uses first converged result; otherwise falls back to last attempt.
+4. Requires at least 2 distinct ordinal classes in training fold.
+5. Optuna minimizes mean CV MAE with __group__ attached to X.
+
+
+Prediction & Post-processing
+------------------------------
+result.predict(exog) returns class probabilities; prediction is argmax
+over columns (integer class 0–5).
+
+
+Evaluation Protocol
+-------------------
+CV objective: MAE
+Test metrics: MAE, RMSE, R2, QWK
+
+
+Known Limitations
+-----------------
+Misleading registry name (historical); no random effects for participants.
+Ignores static demographic features (age, menarche age) by design.
+Test MAE improved to ~1.21 after removing participant dummies but remains
+worse than persistence baselines.
+Convergence not guaranteed; fit_method_ may be "fallback".
+Groups column is required but not used in the exog design matrix.
