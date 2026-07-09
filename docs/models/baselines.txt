@@ -1,0 +1,80 @@
+Fatigue Modeling — Baselines
+============================
+
+Metrics from prior runs; refresh after re-running fatigue_modeling.ipynb.
+
+
+ORDINAL BASELINES
+-----------------
+
+### global_mean
+
+Task: Ordinal baseline (fatigue_num 0–5)
+Purpose: Simplest sanity check — predict the rounded mean fatigue from training data for every row.
+Optuna: None (rule-based).
+Prediction: Constant integer per row; already in valid ordinal range.
+Evaluation: CV and test MAE, RMSE, R2, QWK.
+Limitations: Typical test MAE ~1.32 — worse than persistence baselines (lag1_fatigue ~0.93, expanding_mean ~0.84). Ignores all features and participant identity. Useful lower bound only.
+
+
+### global_mode
+
+Task: Ordinal baseline (fatigue_num 0–5)
+Purpose: Predict the most frequent fatigue level in training data for every row.
+Optuna: None (rule-based).
+Prediction: Constant integer (mode of training target).
+Evaluation: CV and test MAE, RMSE, R2, QWK.
+Limitations: Typical test MAE ~0.99. Worse than lag1_fatigue and expanding_mean. Ignores features and temporal structure.
+
+
+### lag1_fatigue
+
+Task: Ordinal baseline (fatigue_num 0–5)
+Purpose: Persistence benchmark — predict yesterday's fatigue for the same participant wave.
+Optuna: None (rule-based prior from fatigue_lag1).
+Prediction: Round prior, clip to [0, 5]; NaN priors use training fallback.
+Evaluation: CV and test MAE, RMSE, R2, QWK.
+Limitations: Typical test MAE ~0.93. Strong benchmark — no tuned ordinal model consistently beats it on test in prior runs. First day of each wave has NaN prior. Does not use activity features.
+
+
+### expanding_mean
+
+Task: Ordinal baseline (fatigue_num 0–5)
+Purpose: Participant-wave running mean of all prior fatigue ratings (excluding current day). Smoother than lag1.
+Optuna: None (rule-based prior from fatigue_expanding_mean).
+Prediction: Round prior, clip to [0, 5]; NaN priors use training fallback.
+Evaluation: CV and test MAE, RMSE, R2, QWK.
+Limitations: Typical test MAE ~0.84 — best among ordinal baselines in prior runs. Still ignores activity features; only uses own fatigue history. Requires prior days within wave.
+
+
+CLASSIFICATION BASELINES
+------------------------
+
+### majority_class
+
+Task: Binary classification baseline (high_fatigue)
+Purpose: Predict the most common high_fatigue label (0 or 1) from training data for every row.
+Optuna: None (rule-based).
+Prediction: Constant 0 or 1 label.
+Evaluation: CV and test accuracy, F1, precision, recall.
+Limitations: Typical test accuracy ~0.68 but F1 ~0 when minority class is never predicted. Tuned classifiers improve F1 at cost of accuracy. Does not use any features.
+
+
+### lag1_high_fatigue
+
+Task: Binary classification baseline (high_fatigue)
+Purpose: Persistence benchmark — predict yesterday's high-fatigue indicator (1 if prior fatigue >= 4, else 0).
+Optuna: None (rule-based prior from high_fatigue_lag1).
+Prediction: Round prior to 0/1; NaN priors use training fallback.
+Evaluation: CV and test accuracy, F1, precision, recall.
+Limitations: Strong competitor when fatigue state persists day-to-day. First day of each wave has NaN prior. Primary persistence reference for classification models.
+
+
+### expanding_high_fatigue_rate
+
+Task: Binary classification baseline (high_fatigue)
+Purpose: Expanding mean of past high-fatigue rate (0–1), rounded to 0/1. Smoother than lag1.
+Optuna: None (rule-based prior from expanding high-fatigue rate).
+Prediction: Round prior rate to 0/1; NaN priors use training fallback.
+Evaluation: CV and test accuracy, F1, precision, recall.
+Limitations: Often strong when participants have stable high-fatigue patterns. Primary persistence reference alongside lag1_high_fatigue for classification models.

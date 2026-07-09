@@ -1,0 +1,50 @@
+Fatigue Modeling — Classification Models
+========================================
+
+Metrics from prior runs; refresh after re-running fatigue_modeling.ipynb.
+
+
+TUNED CLASSIFICATION MODELS
+---------------------------
+
+### lightgbm
+
+Task: Binary classification (high_fatigue: 1 if fatigue_num >= 4)
+Purpose: Gradient-boosted trees for detecting high-fatigue days with balanced class weights.
+Optuna: n_estimators [100, 500], max_depth [3, 12], learning_rate log-uniform [0.01, 0.3], num_leaves [15, 63], min_child_samples [5, 50].
+Prediction: Hard 0/1 labels at default threshold 0.5.
+Evaluation: CV F1. Test accuracy, F1, precision, recall.
+Limitations: High recall (~0.65–0.87) but low precision (~0.29–0.30) on test in prior runs. Test accuracy (~0.32–0.39) below majority_class (~0.68). Beats majority baseline on F1 but not on accuracy.
+
+
+### random_forest
+
+Task: Binary classification (high_fatigue: 1 if fatigue_num >= 4)
+Purpose: Bagged decision trees for high-fatigue detection; simpler nonlinear alternative to LightGBM.
+Optuna: n_estimators [100, 500], max_depth [3, 20], min_samples_leaf [1, 10], max_features {sqrt, log2}.
+Prediction: Hard 0/1 labels (sklearn default).
+Evaluation: CV F1. Test accuracy, F1, precision, recall.
+Limitations: Similar trade-off to LightGBM — better F1 than majority_class, worse accuracy. Low precision on high-fatigue class due to imbalance.
+
+
+HISTORY / HYBRID CLASSIFICATION MODELS
+------------------------------------
+
+### catboost_history_clf
+
+Task: Binary classification (high_fatigue: 1 if fatigue_num >= 4)
+Purpose: CatBoost on same-day features plus seven leakage-safe history columns.
+Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}.
+Prediction: Hard 0/1 labels (Logloss, balanced class weights).
+Evaluation: CV F1. Test accuracy, F1, precision, recall.
+Limitations: History features overlap with lag1_high_fatigue and expanding_high_fatigue_rate persistence baselines; compare test F1 against those in notebook results.
+
+
+### catboost_residual_expanding_clf
+
+Task: Binary classification (high_fatigue: 1 if fatigue_num >= 4) — hybrid / residual model
+Purpose: Expanding high-fatigue rate prior plus CatBoost residual on history features (mirrors ordinal hybrid).
+Optuna: Same as catboost_residual_expanding — CatBoost + ewma_alpha + rolling_window (RMSE on residual).
+Prediction: (prior_rate + residual_hat >= 0.5) -> 0/1, where prior_rate is expanding high-fatigue rate from prior days.
+Evaluation: CV F1. Test accuracy, F1, precision, recall.
+Limitations: Compare test F1 vs lag1_high_fatigue and expanding_high_fatigue_rate. Residual decomposition may not beat history classifier if prior is already informative.
