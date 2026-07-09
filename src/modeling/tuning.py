@@ -11,13 +11,17 @@ from modeling.config import (
     ROLLING_WINDOW,
 )
 from modeling.cv import run_group_cv, run_group_cv_sequences
-from modeling.data import build_history_tree_matrices, build_hybrid_tree_matrices
+from modeling.data import (
+    build_history_tree_matrices,
+    build_hybrid_tree_matrices,
+    compute_expanding_high_fatigue_rate_prior,
+)
 from modeling.models.ordinal import attach_groups
 from modeling.registry import (
-    HISTORY_TREE_ORDINAL_MODELS,
     MIXED_EFFECTS_MODELS,
-    RESIDUAL_TREE_ORDINAL_MODELS,
     SEQUENCE_MODELS,
+    is_history_tree_model,
+    is_residual_tree_model,
     make_model_factory,
 )
 
@@ -30,10 +34,10 @@ def _direction(task):
     return "minimize" if task == "ordinal" else "maximize"
 
 
-def _build_trial_matrices(name, bundle, params):
+def _build_trial_matrices(name, bundle, params, task="ordinal"):
     ewma_alpha = params.get("ewma_alpha", EWMA_ALPHA)
     rolling_window = params.get("rolling_window", ROLLING_WINDOW)
-    if name in HISTORY_TREE_ORDINAL_MODELS:
+    if is_history_tree_model(name, task=task):
         return build_history_tree_matrices(
             bundle.df,
             bundle.train_val_mask,
@@ -41,13 +45,17 @@ def _build_trial_matrices(name, bundle, params):
             ewma_alpha=ewma_alpha,
             rolling_window=rolling_window,
         )[0]
-    if name in RESIDUAL_TREE_ORDINAL_MODELS:
+    if is_residual_tree_model(name, task=task):
+        prior_series = None
+        if task == "classification":
+            prior_series = compute_expanding_high_fatigue_rate_prior(bundle.df)
         return build_hybrid_tree_matrices(
             bundle.df,
             bundle.train_val_mask,
             bundle.test_mask,
             ewma_alpha=ewma_alpha,
             rolling_window=rolling_window,
+            prior_series=prior_series,
         )[0]
     raise ValueError(f"No trial matrix builder for model: {name}")
 
@@ -69,8 +77,8 @@ def tune_model(
     metric = _primary_metric(task)
     use_sequences = name in SEQUENCE_MODELS
     use_mixed = name in MIXED_EFFECTS_MODELS
-    use_history = name in HISTORY_TREE_ORDINAL_MODELS
-    use_residual = name in RESIDUAL_TREE_ORDINAL_MODELS
+    use_history = is_history_tree_model(name, task=task)
+    use_residual = is_residual_tree_model(name, task=task)
 
     if use_sequences and seq_train_val is None:
         raise ValueError("seq_train_val is required for sequence models.")
@@ -95,7 +103,7 @@ def tune_model(
                 test_ids=test_ids,
             )
         elif use_history or use_residual:
-            X_tv = _build_trial_matrices(name, bundle, params)
+            X_tv = _build_trial_matrices(name, bundle, params, task=task)
             fold_df, _ = run_group_cv(
                 factory,
                 X_tv,

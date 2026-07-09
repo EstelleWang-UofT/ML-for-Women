@@ -26,6 +26,9 @@ CATEGORICAL_FEATURES = [
 ]
 
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
+
+TIME_SERIES_GROUP_COLS = ["id", "study_interval"]
+TIME_COL = "day_in_study"
 SEQUENCE_FEATURE_COLUMNS = NUMERIC_FEATURES + [
     "is_weekend",
     "exerciselevel_num",
@@ -49,7 +52,7 @@ HISTORY_FEATURES = [
     "fatigue_lag1",
     "fatigue_expanding_mean",
     "fatigue_ewma",
-    "active_minutes_roll3_mean",
+    "activity_logsum_roll3_mean",
     "calories_sum_roll3_mean",
     "very_roll3_mean",
     "fatigue_delta_lag1",

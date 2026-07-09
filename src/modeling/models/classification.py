@@ -1,9 +1,45 @@
 """Binary classification model builders."""
 
 import lightgbm as lgb
+from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
 
 from modeling.config import RANDOM_STATE
+
+
+def _make_catboost_classifier(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+):
+    return CatBoostClassifier(
+        loss_function="Logloss",
+        auto_class_weights="Balanced",
+        iterations=iterations,
+        depth=depth,
+        learning_rate=learning_rate,
+        l2_leaf_reg=l2_leaf_reg,
+        random_state=RANDOM_STATE,
+        verbose=0,
+        train_dir=None,
+    )
+
+
+def build_catboost_history_classifier(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+    **kwargs,
+):
+    del kwargs
+    return _make_catboost_classifier(
+        iterations=iterations,
+        depth=depth,
+        learning_rate=learning_rate,
+        l2_leaf_reg=l2_leaf_reg,
+    )
 
 
 def build_lightgbm_classifier(

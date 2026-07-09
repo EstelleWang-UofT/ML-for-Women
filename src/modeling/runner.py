@@ -2,11 +2,15 @@
 
 from modeling.config import EWMA_ALPHA, N_CV_FOLDS, OPTUNA_TRIALS, ROLLING_WINDOW
 from modeling.cv import run_model_benchmark
-from modeling.data import build_history_tree_matrices, build_hybrid_tree_matrices
+from modeling.data import (
+    build_history_tree_matrices,
+    build_hybrid_tree_matrices,
+    compute_expanding_high_fatigue_rate_prior,
+)
 from modeling.registry import (
-    HISTORY_TREE_ORDINAL_MODELS,
-    RESIDUAL_TREE_ORDINAL_MODELS,
     get_search_space,
+    is_history_tree_model,
+    is_residual_tree_model,
     make_model_factory,
     resolve_training_data,
 )
@@ -32,8 +36,8 @@ def tune_and_benchmark_model(
     """Tune (optional) + GroupKFold benchmark + test eval for one model."""
     data_kwargs = resolve_training_data(name, bundle, task=task)
     cv_score = None
-    use_history = name in HISTORY_TREE_ORDINAL_MODELS
-    use_residual = name in RESIDUAL_TREE_ORDINAL_MODELS
+    use_history = is_history_tree_model(name, task=task)
+    use_residual = is_residual_tree_model(name, task=task)
 
     if params is None:
         tune_kwargs = {
@@ -63,10 +67,14 @@ def tune_and_benchmark_model(
         )
     elif use_residual:
         history_params = _history_params_from_params(params)
+        prior_series = None
+        if task == "classification":
+            prior_series = compute_expanding_high_fatigue_rate_prior(bundle.df)
         X_train_val, X_test = build_hybrid_tree_matrices(
             bundle.df,
             bundle.train_val_mask,
             bundle.test_mask,
+            prior_series=prior_series,
             **history_params,
         )
     else:

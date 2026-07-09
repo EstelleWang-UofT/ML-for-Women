@@ -20,6 +20,8 @@ from modeling.config import (
     ROLLING_WINDOW,
     SEQUENCE_FEATURE_COLUMNS,
     TEST_SIZE,
+    TIME_COL,
+    TIME_SERIES_GROUP_COLS,
 )
 
 
@@ -58,12 +60,35 @@ class SplitBundle:
     y_lag1_test: pd.Series
     y_expanding_train_val: pd.Series
     y_expanding_test: pd.Series
+    y_clf_lag1_train_val: pd.Series
+    y_clf_lag1_test: pd.Series
+    y_clf_expanding_train_val: pd.Series
+    y_clf_expanding_test: pd.Series
     seq_train_val: SequenceData
     seq_test: SequenceData
 
 
 def load_fatigue_data(path=DATA_PATH):
     return pd.read_csv(path)
+
+
+def _resolve_group_cols(df, group_cols=None):
+    """Return wave-aware grouping columns for temporal features."""
+    if group_cols is None:
+        group_cols = TIME_SERIES_GROUP_COLS
+    group_cols = list(group_cols)
+    missing = [col for col in group_cols if col not in df.columns]
+    if missing:
+        raise ValueError(
+            "Missing columns required for wave-aware temporal features: "
+            f"{missing}. Re-export physical_activity_merged_processed.csv "
+            "with study_interval from merged preprocess.ipynb."
+        )
+    return group_cols
+
+
+def _sort_by_group_time(df, group_cols, time_col):
+    return df.sort_values(group_cols + [time_col])
 
 
 def participant_strata(
@@ -144,55 +169,90 @@ def build_tree_matrix(X):
 
 def compute_fatigue_lag1(
     df,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
 ):
-    """Previous-day fatigue per participant (NaN on each participant's first day)."""
-    ordered = df.sort_values([group_col, time_col])
-    lag1 = ordered.groupby(group_col)[target_col].shift(1)
+    """Previous-day fatigue per participant wave (NaN on each wave's first day)."""
+    group_cols = _resolve_group_cols(df, group_cols)
+    ordered = _sort_by_group_time(df, group_cols, time_col)
+    lag1 = ordered.groupby(group_cols, sort=False)[target_col].shift(1)
     return lag1.reindex(df.index)
+
+
+def compute_high_fatigue_lag1(
+    df,
+    group_cols=None,
+    time_col=TIME_COL,
+    target_col="fatigue_num",
+    threshold=HIGH_FATIGUE_THRESHOLD,
+):
+    """Previous-day high-fatigue indicator (0/1); NaN on each wave's first day."""
+    lag1 = compute_fatigue_lag1(df, group_cols, time_col, target_col)
+    out = (lag1 >= threshold).astype(float)
+    out[lag1.isna()] = np.nan
+    return out
+
+
+def compute_expanding_high_fatigue_rate_prior(
+    df,
+    group_cols=None,
+    time_col=TIME_COL,
+    target_col="fatigue_num",
+    threshold=HIGH_FATIGUE_THRESHOLD,
+):
+    """Expanding mean of past high-fatigue rate (0-1) per participant wave."""
+    high_fatigue = (df[target_col] >= threshold).astype(float)
+    work = df.assign(_high_fatigue=high_fatigue)
+    return compute_expanding_mean_prior(
+        work, group_cols=group_cols, time_col=time_col, target_col="_high_fatigue"
+    )
 
 
 def compute_expanding_mean_prior(
     df,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
 ):
-    """Mean fatigue from earlier days in the same participant (NaN on first day)."""
-    ordered = df.sort_values([group_col, time_col])
+    """Mean fatigue from earlier days in the same wave (NaN on first day)."""
+    group_cols = _resolve_group_cols(df, group_cols)
+    ordered = _sort_by_group_time(df, group_cols, time_col)
 
     def _expanding_prior(series):
         shifted = series.shift(1)
         return shifted.expanding(min_periods=1).mean()
 
-    expanding = ordered.groupby(group_col)[target_col].transform(_expanding_prior)
+    expanding = ordered.groupby(group_cols, sort=False)[target_col].transform(
+        _expanding_prior
+    )
     return expanding.reindex(df.index)
 
 
 def compute_fatigue_lag2(
     df,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
 ):
-    """Fatigue from two days ago per participant (NaN on first two days)."""
-    ordered = df.sort_values([group_col, time_col])
-    lag2 = ordered.groupby(group_col)[target_col].shift(2)
+    """Fatigue from two days ago per wave (NaN on first two days)."""
+    group_cols = _resolve_group_cols(df, group_cols)
+    ordered = _sort_by_group_time(df, group_cols, time_col)
+    lag2 = ordered.groupby(group_cols, sort=False)[target_col].shift(2)
     return lag2.reindex(df.index)
 
 
 def compute_fatigue_ewma_prior(
     df,
     alpha=EWMA_ALPHA,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
 ):
-    """EWMA of prior fatigue per participant (NaN until first prior day exists)."""
-    ordered = df.sort_values([group_col, time_col])
-    ewma = ordered.groupby(group_col)[target_col].transform(
+    """EWMA of prior fatigue per wave (NaN until first prior day exists)."""
+    group_cols = _resolve_group_cols(df, group_cols)
+    ordered = _sort_by_group_time(df, group_cols, time_col)
+    ewma = ordered.groupby(group_cols, sort=False)[target_col].transform(
         lambda s: s.shift(1).ewm(alpha=alpha, adjust=False).mean()
     )
     return ewma.reindex(df.index)
@@ -200,13 +260,13 @@ def compute_fatigue_ewma_prior(
 
 def compute_fatigue_delta_lag1(
     df,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
 ):
     """Change in fatigue from two days ago to yesterday (lag1 - lag2)."""
-    lag1 = compute_fatigue_lag1(df, group_col, time_col, target_col)
-    lag2 = compute_fatigue_lag2(df, group_col, time_col, target_col)
+    lag1 = compute_fatigue_lag1(df, group_cols, time_col, target_col)
+    lag2 = compute_fatigue_lag2(df, group_cols, time_col, target_col)
     return lag1 - lag2
 
 
@@ -214,25 +274,27 @@ def compute_rolling_mean_prior(
     df,
     col,
     window=ROLLING_WINDOW,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
 ):
-    """Rolling mean of a column over prior days within each participant."""
-    ordered = df.sort_values([group_col, time_col])
-    rolled = ordered.groupby(group_col)[col].transform(
+    """Rolling mean of a column over prior days within each wave."""
+    group_cols = _resolve_group_cols(df, group_cols)
+    ordered = _sort_by_group_time(df, group_cols, time_col)
+    rolled = ordered.groupby(group_cols, sort=False)[col].transform(
         lambda s: s.shift(1).rolling(window=window, min_periods=1).mean()
     )
     return rolled.reindex(df.index)
 
 
-def compute_active_minutes(df):
+def compute_log1p_activity_sum(df):
+    """Sum of log1p-transformed lightly, moderately, and very columns."""
     return df["lightly"] + df["moderately"] + df["very"]
 
 
 def compute_history_features(
     df,
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
     target_col="fatigue_num",
     ewma_alpha=None,
     rolling_window=None,
@@ -243,31 +305,31 @@ def compute_history_features(
     if rolling_window is None:
         rolling_window = ROLLING_WINDOW
 
-    active = compute_active_minutes(df)
+    activity_logsum = compute_log1p_activity_sum(df)
     work = pd.DataFrame(index=df.index)
-    work["fatigue_lag1"] = compute_fatigue_lag1(df, group_col, time_col, target_col)
+    work["fatigue_lag1"] = compute_fatigue_lag1(df, group_cols, time_col, target_col)
     work["fatigue_expanding_mean"] = compute_expanding_mean_prior(
-        df, group_col, time_col, target_col
+        df, group_cols, time_col, target_col
     )
     work["fatigue_ewma"] = compute_fatigue_ewma_prior(
-        df, ewma_alpha, group_col, time_col, target_col
+        df, ewma_alpha, group_cols, time_col, target_col
     )
-    active_df = df.assign(_active_minutes=active)
-    work["active_minutes_roll3_mean"] = compute_rolling_mean_prior(
-        active_df,
-        "_active_minutes",
+    activity_df = df.assign(_activity_logsum=activity_logsum)
+    work["activity_logsum_roll3_mean"] = compute_rolling_mean_prior(
+        activity_df,
+        "_activity_logsum",
         rolling_window,
-        group_col,
+        group_cols,
         time_col,
     )
     work["calories_sum_roll3_mean"] = compute_rolling_mean_prior(
-        df, "calories_sum", rolling_window, group_col, time_col
+        df, "calories_sum", rolling_window, group_cols, time_col
     )
     work["very_roll3_mean"] = compute_rolling_mean_prior(
-        df, "very", rolling_window, group_col, time_col
+        df, "very", rolling_window, group_cols, time_col
     )
     work["fatigue_delta_lag1"] = compute_fatigue_delta_lag1(
-        df, group_col, time_col, target_col
+        df, group_cols, time_col, target_col
     )
     return work[HISTORY_FEATURES]
 
@@ -318,19 +380,21 @@ def build_hybrid_tree_matrices(
     test_mask,
     ewma_alpha=None,
     rolling_window=None,
+    prior_series=None,
 ):
     """Build tree-encoded hybrid feature matrices for train/val and test splits."""
     X_all_history = make_feature_matrix_with_history(
         df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
     )
-    y_expanding = compute_expanding_mean_prior(df)
+    if prior_series is None:
+        prior_series = compute_expanding_mean_prior(df)
     X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
     X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
-    y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
-    y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
+    y_prior_train_val = prior_series.loc[train_val_mask].reset_index(drop=True)
+    y_prior_test = prior_series.loc[test_mask].reset_index(drop=True)
     return (
-        build_hybrid_residual_matrix(X_train_val_history, y_expanding_train_val),
-        build_hybrid_residual_matrix(X_test_history, y_expanding_test),
+        build_hybrid_residual_matrix(X_train_val_history, y_prior_train_val),
+        build_hybrid_residual_matrix(X_test_history, y_prior_test),
     )
 
 
@@ -342,10 +406,15 @@ def build_sequence_tensors(
     data,
     feature_cols=SEQUENCE_FEATURE_COLUMNS,
     target_col="fatigue_num",
-    group_col="id",
-    time_col="day_in_study",
+    group_cols=None,
+    time_col=TIME_COL,
 ):
-    work = data[[group_col, time_col, target_col] + [c for c in feature_cols if c in data.columns]].copy()
+    group_cols = _resolve_group_cols(data, group_cols)
+    participant_col = "id"
+    seq_group_cols = group_cols
+
+    base_cols = list(dict.fromkeys(seq_group_cols + [time_col, target_col]))
+    work = data[base_cols + [c for c in feature_cols if c in data.columns]].copy()
     if "phase" in data.columns:
         work["phase"] = _encode_phase_series(data["phase"])
         if "phase" not in feature_cols:
@@ -355,8 +424,8 @@ def build_sequence_tensors(
 
     feature_cols = [c for c in feature_cols if c in work.columns]
     grouped = {}
-    for group_id, gdf in work.groupby(group_col, sort=False):
-        grouped[group_id] = gdf.sort_values(time_col)
+    for seq_key, gdf in work.groupby(seq_group_cols, sort=False):
+        grouped[seq_key] = gdf.sort_values(time_col)
 
     seq_rows = []
     y_list = []
@@ -364,12 +433,12 @@ def build_sequence_tensors(
     y_expanding_list = []
     groups_list = []
 
-    lag1_all = compute_fatigue_lag1(data, group_col, time_col, target_col)
-    expanding_all = compute_expanding_mean_prior(data, group_col, time_col, target_col)
+    lag1_all = compute_fatigue_lag1(data, group_cols, time_col, target_col)
+    expanding_all = compute_expanding_mean_prior(data, group_cols, time_col, target_col)
 
     for idx, row in work.iterrows():
-        group_id = row[group_col]
-        gdf = grouped[group_id]
+        seq_key = tuple(row[col] for col in seq_group_cols)
+        gdf = grouped[seq_key]
         pos = gdf.index.get_loc(idx)
         if isinstance(pos, slice):
             pos = pos.start
@@ -382,7 +451,7 @@ def build_sequence_tensors(
         exp_val = expanding_all.loc[idx]
         y_lag1_list.append(np.nan if pd.isna(lag_val) else float(lag_val))
         y_expanding_list.append(np.nan if pd.isna(exp_val) else float(exp_val))
-        groups_list.append(group_id)
+        groups_list.append(row[participant_col])
 
     n_samples = len(seq_rows)
     n_features = len(feature_cols)
@@ -462,9 +531,13 @@ def prepare_splits(
     y_high_fatigue = (df["fatigue_num"] >= HIGH_FATIGUE_THRESHOLD).astype(int)
     y_lag1 = compute_fatigue_lag1(df)
     y_expanding = compute_expanding_mean_prior(df)
+    y_clf_lag1 = compute_high_fatigue_lag1(df)
+    y_clf_expanding = compute_expanding_high_fatigue_rate_prior(df)
 
     y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
     y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
+    y_clf_expanding_train_val = y_clf_expanding.loc[train_val_mask].reset_index(drop=True)
+    y_clf_expanding_test = y_clf_expanding.loc[test_mask].reset_index(drop=True)
 
     return SplitBundle(
         df=df,
@@ -490,6 +563,10 @@ def prepare_splits(
         y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
         y_expanding_train_val=y_expanding_train_val,
         y_expanding_test=y_expanding_test,
+        y_clf_lag1_train_val=y_clf_lag1.loc[train_val_mask].reset_index(drop=True),
+        y_clf_lag1_test=y_clf_lag1.loc[test_mask].reset_index(drop=True),
+        y_clf_expanding_train_val=y_clf_expanding_train_val,
+        y_clf_expanding_test=y_clf_expanding_test,
         seq_train_val=_subset_sequence_data(seq_all, train_val_mask.values),
         seq_test=_subset_sequence_data(seq_all, test_mask.values),
     )

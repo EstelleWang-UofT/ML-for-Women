@@ -1,8 +1,15 @@
 """Model registry and Optuna search spaces."""
 
 from modeling.config import EWMA_ALPHA_RANGE, ROLLING_WINDOW_CHOICES
-from modeling.models.classification import build_lightgbm_classifier, build_rf_classifier
-from modeling.models.hybrid import build_catboost_residual_expanding
+from modeling.models.classification import (
+    build_catboost_history_classifier,
+    build_lightgbm_classifier,
+    build_rf_classifier,
+)
+from modeling.models.hybrid import (
+    build_catboost_residual_expanding,
+    build_catboost_residual_expanding_clf,
+)
 from modeling.models.ordinal import (
     attach_groups,
     build_catboost_history,
@@ -35,11 +42,21 @@ CLASSIFICATION_MODELS = {
     "random_forest": build_rf_classifier,
 }
 
+HISTORY_CLASSIFICATION_MODELS = {
+    "catboost_history_clf": build_catboost_history_classifier,
+}
+
+RESIDUAL_CLASSIFICATION_MODELS = {
+    "catboost_residual_expanding_clf": build_catboost_residual_expanding_clf,
+}
+
 SEQUENCE_MODELS = {"lstm"}
 MIXED_EFFECTS_MODELS = {"mixed_effects"}
 TREE_ORDINAL_MODELS = {"ordinal_rf", "catboost_ordinal"}
 HISTORY_TREE_ORDINAL_MODELS = {"catboost_history"}
 RESIDUAL_TREE_ORDINAL_MODELS = {"catboost_residual_expanding"}
+HISTORY_TREE_CLASSIFICATION_MODELS = {"catboost_history_clf"}
+RESIDUAL_TREE_CLASSIFICATION_MODELS = {"catboost_residual_expanding_clf"}
 
 TUNING_ONLY_PARAM_KEYS = frozenset({"ewma_alpha", "rolling_window"})
 
@@ -64,6 +81,16 @@ def _catboost_history_search_space(trial):
     }
 
 
+def _catboost_history_clf_search_space(trial):
+    return {
+        **_catboost_search_space(trial),
+        "ewma_alpha": trial.suggest_float(
+            "ewma_alpha", EWMA_ALPHA_RANGE[0], EWMA_ALPHA_RANGE[1]
+        ),
+        "rolling_window": trial.suggest_categorical("rolling_window", ROLLING_WINDOW_CHOICES),
+    }
+
+
 def _catboost_residual_search_space(trial):
     return {
         **_catboost_search_space(trial),
@@ -72,6 +99,18 @@ def _catboost_residual_search_space(trial):
         ),
         "rolling_window": trial.suggest_categorical("rolling_window", ROLLING_WINDOW_CHOICES),
     }
+
+
+def is_history_tree_model(name, task="ordinal"):
+    if task == "classification":
+        return name in HISTORY_TREE_CLASSIFICATION_MODELS
+    return name in HISTORY_TREE_ORDINAL_MODELS
+
+
+def is_residual_tree_model(name, task="ordinal"):
+    if task == "classification":
+        return name in RESIDUAL_TREE_CLASSIFICATION_MODELS
+    return name in RESIDUAL_TREE_ORDINAL_MODELS
 
 
 def resolve_training_data(name, bundle, task="ordinal"):
@@ -86,6 +125,24 @@ def resolve_training_data(name, bundle, task="ordinal"):
             "y_train_val": y_train_val,
             "y_test": y_test,
             "groups": bundle.groups_train_val,
+        }
+
+    if name in HISTORY_TREE_CLASSIFICATION_MODELS:
+        return {
+            "X_train_val": bundle.X_train_val_history_tree,
+            "X_test": bundle.X_test_history_tree,
+            "y_train_val": bundle.y_clf_train_val,
+            "y_test": bundle.y_clf_test,
+            "groups": bundle.groups_train_val,
+            "bundle": bundle,
+        }
+
+    if name in RESIDUAL_TREE_CLASSIFICATION_MODELS:
+        return {
+            "y_train_val": bundle.y_clf_train_val,
+            "y_test": bundle.y_clf_test,
+            "groups": bundle.groups_train_val,
+            "bundle": bundle,
         }
 
     if task == "classification":
@@ -154,7 +211,9 @@ def get_search_space(name):
         },
         "catboost_ordinal": _catboost_search_space,
         "catboost_history": _catboost_history_search_space,
+        "catboost_history_clf": _catboost_history_clf_search_space,
         "catboost_residual_expanding": _catboost_residual_search_space,
+        "catboost_residual_expanding_clf": _catboost_residual_search_space,
         "mixed_effects": lambda trial: {
             "maxiter": trial.suggest_int("maxiter", 200, 800),
         },

@@ -47,6 +47,39 @@ class MajorityClassBaseline(BaseEstimator):
         return np.full(len(X), self.value_, dtype=int)
 
 
+class PriorClassBaseline(BaseEstimator):
+    """Predict a precomputed prior class column; NaN values use a training fallback."""
+
+    prior_col = "__prior__"
+
+    def fit(self, X, y):
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError(f"{self.__class__.__name__} expects a DataFrame with {self.prior_col}.")
+        prior = pd.to_numeric(X[self.prior_col], errors="coerce")
+        if prior.notna().any():
+            self.fallback_ = int(np.rint(prior.dropna().mean()))
+        else:
+            values, counts = np.unique(y, return_counts=True)
+            self.fallback_ = int(values[np.argmax(counts)])
+        self.fallback_ = int(np.clip(self.fallback_, 0, 1))
+        return self
+
+    def predict(self, X):
+        if not isinstance(X, pd.DataFrame):
+            raise TypeError(f"{self.__class__.__name__} expects a DataFrame with {self.prior_col}.")
+        prior = pd.to_numeric(X[self.prior_col], errors="coerce")
+        preds = prior.fillna(self.fallback_).round().clip(0, 1).astype(int)
+        return preds.to_numpy()
+
+
+class Lag1HighFatigueBaseline(PriorClassBaseline):
+    """Predict previous-day high-fatigue indicator (persistence baseline)."""
+
+
+class ExpandingHighFatigueRateBaseline(PriorClassBaseline):
+    """Predict from expanding mean high-fatigue rate from prior days."""
+
+
 class PriorValueBaseline(BaseEstimator):
     """Predict a precomputed prior target column; NaN values use a training fallback."""
 
@@ -103,6 +136,16 @@ def build_expanding_mean_baseline(**kwargs):
     return ExpandingMeanBaseline()
 
 
+def build_lag1_high_fatigue_baseline(**kwargs):
+    del kwargs
+    return Lag1HighFatigueBaseline()
+
+
+def build_expanding_high_fatigue_rate_baseline(**kwargs):
+    del kwargs
+    return ExpandingHighFatigueRateBaseline()
+
+
 ORDINAL_BASELINES = {
     "global_mean": build_global_mean_baseline,
     "global_mode": build_global_mode_baseline,
@@ -112,6 +155,8 @@ ORDINAL_BASELINES = {
 
 CLASSIFICATION_BASELINES = {
     "majority_class": build_majority_class_baseline,
+    "lag1_high_fatigue": build_lag1_high_fatigue_baseline,
+    "expanding_high_fatigue_rate": build_expanding_high_fatigue_rate_baseline,
 }
 
 
@@ -167,6 +212,38 @@ def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_
             X_test=X_test,
             y_train_val=bundle.y_ord_train_val,
             y_test=bundle.y_ord_test,
+            groups=bundle.groups_train_val,
+        )
+
+    if task == "classification" and name == "lag1_high_fatigue":
+        X_train_val = attach_prior_frame(bundle.X_train_val, bundle.y_clf_lag1_train_val)
+        X_test = attach_prior_frame(bundle.X_test, bundle.y_clf_lag1_test)
+        return run_model_benchmark(
+            name=name,
+            model_factory=factory,
+            task=task,
+            n_splits=n_splits,
+            test_ids=bundle.test_ids,
+            X_train_val=X_train_val,
+            X_test=X_test,
+            y_train_val=bundle.y_clf_train_val,
+            y_test=bundle.y_clf_test,
+            groups=bundle.groups_train_val,
+        )
+
+    if task == "classification" and name == "expanding_high_fatigue_rate":
+        X_train_val = attach_prior_frame(bundle.X_train_val, bundle.y_clf_expanding_train_val)
+        X_test = attach_prior_frame(bundle.X_test, bundle.y_clf_expanding_test)
+        return run_model_benchmark(
+            name=name,
+            model_factory=factory,
+            task=task,
+            n_splits=n_splits,
+            test_ids=bundle.test_ids,
+            X_train_val=X_train_val,
+            X_test=X_test,
+            y_train_val=bundle.y_clf_train_val,
+            y_test=bundle.y_clf_test,
             groups=bundle.groups_train_val,
         )
 
