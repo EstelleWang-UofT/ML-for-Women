@@ -37,6 +37,7 @@ Numeric (NUMERIC_FEATURES):
   filtered_demographic_vo2_max, cardio_zone, fat_burn_zone,
   below_fat_burn_zone, lh_smooth, estrogen_smooth,
   age_of_first_menarche, age
+  Note: lightly, moderately, very are log1p-transformed in the processed CSV.
 
 Categorical (CATEGORICAL_FEATURES):
   is_weekend, phase, exerciselevel_num,
@@ -51,8 +52,8 @@ Phase order: Menstrual, Follicular, Fertility, Luteal
 
 History features (HISTORY_FEATURES — past days only, per participant):
   fatigue_lag1, fatigue_expanding_mean, fatigue_ewma,
-  active_minutes_roll3_mean, calories_sum_roll3_mean,
-  very_roll3_mean, fatigue_delta_lag1
+  active_minutes_roll3_mean (rolling mean of log1p lightly + log1p moderately + log1p very),
+  calories_sum_roll3_mean, very_roll3_mean, fatigue_delta_lag1
 
 Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (defaults; tuned for catboost_history),
   EWMA_ALPHA_RANGE=(0.1, 0.5), ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],

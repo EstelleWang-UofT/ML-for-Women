@@ -35,13 +35,14 @@ Input Format
 ------------
 Tree-encoded DataFrame = make_feature_matrix() + HISTORY_FEATURES:
   fatigue_lag1, fatigue_expanding_mean, fatigue_ewma,
-  active_minutes_roll3_mean, calories_sum_roll3_mean,
-  very_roll3_mean, fatigue_delta_lag1
+  active_minutes_roll3_mean (rolling mean of log1p lightly + log1p moderately + log1p very),
+  calories_sum_roll3_mean, very_roll3_mean, fatigue_delta_lag1
 
 
 Preprocessing
 -------------
 Phase one-hot via build_tree_matrix().
+Same-day lightly, moderately, very are log1p-transformed in the processed CSV.
 History columns computed per participant from prior days only (shift(1)
 before rolling/EWMA). First-day NaNs left missing; CatBoost handles NaN.
 
