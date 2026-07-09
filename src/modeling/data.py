@@ -511,6 +511,12 @@ def prepare_splits(
     train_val_mask = df["id"].isin(train_val_ids)
     test_mask = df["id"].isin(test_ids)
 
+    literacy_col = "menstrual_health_literacy_num"
+    if literacy_col in df.columns and df[literacy_col].isna().any():
+        df = df.copy()
+        literacy_median = df.loc[train_val_mask, literacy_col].median()
+        df[literacy_col] = df[literacy_col].fillna(literacy_median)
+
     X_all = make_feature_matrix(df)
     X_all_history = make_feature_matrix_with_history(
         df, ewma_alpha=ewma_alpha, rolling_window=rolling_window

@@ -29,9 +29,16 @@ DATA
 Source file: mcphases/merged/physical_activity_merged_processed.csv
 Loader: modeling.data.load_fatigue_data()
 
+Preprocessing (merged preprocess.ipynb):
+  1. Participant-level median for 9 activity/HR columns (pre-split, no cross-participant leak)
+  2. menstrual_health_literacy_num left as NaN through export
+
+Post-split imputation (modeling.data.prepare_splits):
+  After the participant hold-out, literacy NaNs are filled with the train_val median only.
+  Test rows never contribute to that median.
+
 Rough scale: ~3,331 daily rows, 42 participants.
-study_interval is retained in the CSV for wave-aware temporal features but is
-not used as a model input.
+study_interval is retained for wave-aware temporal features but is not a model input.
 
 
 FEATURES
@@ -70,6 +77,8 @@ TRAIN / TEST SPLIT
 ------------------
 
 Function: modeling.data.prepare_splits(stratify=True by default)
+
+After splitting, fills menstrual_health_literacy_num NaNs using the train_val median.
 
 1. Compute per-participant high-fatigue rate (fatigue_num >= 4).
 2. Assign participants to tertile strata via pd.qcut on that rate.

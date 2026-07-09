@@ -1,0 +1,24 @@
+Leakage audit — preprocessing steps
+=====================================
+
+Recorded decisions for what is safe before vs after the participant train/test split.
+
+Step                                          | Notebook                    | Verdict
+----------------------------------------------|-----------------------------|------------------------------------------
+VO2 outlier mask [10, 90] + daily .mean()     | preprocessing and merging   | OK before split
+Daily calories sum, drop_duplicates, subject  | preprocessing and merging   | OK before split
+study_interval fill, HR-zone 2024 swap        | merged preprocess           | OK before split
+Interpolate VO2/lh/estrogen (both directions) | merged preprocess           | OK before split
+Manual phase fix, sexually_active -1          | merged preprocess           | OK before split
+Drop pdg/sedentary, fatigue-row filter        | merged preprocess           | OK before split
+Smoother selection + apply, peak_zone drop    | merged preprocess           | OK before split
+log1p on activity columns                     | merged preprocess           | OK before split
+Calories cap 4000                             | merged preprocess           | OK before split
+Participant-level median (9 activity/HR cols) | merged preprocess           | OK before split
+Global median (menstrual_health_literacy_num) | modeling/data.py            | train_val fit only (post-split)
+
+Implementation:
+  merged preprocess.ipynb — participant-level median for 9 columns; literacy NaNs kept
+  src/modeling/data.py prepare_splits() — literacy median fitted on train_val after split
+
+Diagnostic: merged preprocess.ipynb cell after imputation reports all-NaN participant/column pairs.
