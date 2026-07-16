@@ -1,20 +1,24 @@
 Fatigue Modeling — Ordinal Models
 ===================================
 
-Metrics from prior runs; refresh after re-running fatigue_modeling.ipynb.
+All models target fatigue_num (0–5) and are evaluated with task='ordinal' (MAE, RMSE, R2, QWK).
+Refresh metrics after re-running fatigue_modeling.ipynb.
 
 
-TUNED ORDINAL MODELS
---------------------
+ORDINAL REGRESSION
+------------------
 
-### ordered_logistic
+Continuous loss on the numeric fatigue scale; predictions are rounded and clipped to [0, 5].
+
+
+### linear_regression
 
 Task: Ordinal regression (fatigue_num 0–5)
-Purpose: Classical all-threshold ordinal logistic regression respecting ordered fatigue ratings.
+Purpose: Ridge regression baseline on scaled numeric + one-hot categorical features.
 Optuna: alpha log-uniform [1e-3, 10.0].
-Prediction: Integer ordinal classes directly from mord (no clip wrapper).
+Prediction: clip(round(ŷ), 0, 5).
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: Tends to select high alpha (~10) under Optuna. Test MAE typically worse than persistence baselines (lag1_fatigue, expanding_mean). Does not model participant-specific random effects.
+Limitations: Linear structure; no tree interactions.
 
 
 ### ordinal_rf
@@ -24,37 +28,63 @@ Purpose: Random forest regressor on tree-encoded features; treats ordinal target
 Optuna: n_estimators [100, 500], max_depth [3, 20], min_samples_leaf [1, 10].
 Prediction: Regressor output rounded and clipped to [0, 5].
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: No monotonicity constraint across classes. Test performance generally below lag1_fatigue and expanding_mean baselines.
+Limitations: No monotonicity constraint across classes.
 
 
-### catboost_ordinal
+### catboost_regressor
 
 Task: Ordinal regression (fatigue_num 0–5)
-Purpose: Gradient-boosted trees on same-day tree-encoded features.
+Purpose: CatBoost gradient boosting with RMSE loss on tree-encoded features.
 Optuna: iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0].
 Prediction: Continuous output clipped to [0, 5].
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: Best tuned ordinal ML model in prior runs (~MAE 1.07 test) but still worse than expanding_mean (~0.84) and lag1_fatigue (~0.93). RMSE loss does not enforce ordinal structure. May create catboost_info/ artifact directories during training.
+Limitations: RMSE loss does not enforce ordinal class structure.
+
+
+ORDINAL CLASSIFICATION
+----------------------
+
+Ordered likelihood or cumulative-threshold structure on fatigue_num 0–5.
+
+
+### ordered_logistic
+
+Task: Ordinal classification (fatigue_num 0–5)
+Purpose: All-threshold ordinal logistic regression (mord LogisticAT).
+Optuna: alpha log-uniform [1e-3, 10.0].
+Prediction: Integer ordinal classes directly from mord.
+Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
+Limitations: Tends to select high alpha under Optuna. No participant random effects.
+
+
+### ordinal_forest
+
+Task: Ordinal classification (fatigue_num 0–5)
+Purpose: Cumulative-threshold random forest ensemble (five P(y > k) binary forests).
+Optuna: n_estimators [100, 500], max_depth [3, 20], min_samples_leaf [1, 10].
+Prediction: Class probabilities from threshold survival function; expected class clipped to [0, 5].
+Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
+Limitations: Five binary models per fit; threshold probabilities enforced monotonic at predict time.
 
 
 ### mixed_effects
 
-Task: Ordinal regression (fatigue_num 0–5)
+Task: Ordinal classification (fatigue_num 0–5)
 Purpose: Population-level ordered logistic model on day-varying covariates (not a true mixed-effects model).
 Optuna: maxiter [200, 800].
 Prediction: Argmax over class probabilities (integer 0–5).
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: Misleading registry name — no random effects for participants. Ignores static demographics (age, menarche age). Test MAE ~1.21 in prior runs — worse than persistence baselines. Convergence not guaranteed.
+Limitations: Misleading registry name — no random effects for participants. Ignores static demographics. Convergence not guaranteed.
 
 
-### lstm
+### catboost_ordinal
 
-Task: Ordinal regression (fatigue_num 0–5)
-Purpose: Sequence model (LSTM or GRU) using each participant-wave's activity history up to the current day.
-Optuna: rnn_type {lstm, gru}, hidden_size [32, 128], num_layers [1, 2], dropout [0.0, 0.5], lr log-uniform [1e-4, 1e-2], batch_size {32, 64, 128}, epochs [20, 60], patience [5, 12].
-Prediction: Argmax over 6-class logits (0–5).
+Task: Ordinal classification (fatigue_num 0–5)
+Purpose: CatBoost MultiClass with balanced class weights; expected value E[y] over class probabilities.
+Optuna: iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0].
+Prediction: E[y] from predict_proba, then clip to [0, 5].
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: Worst among tuned ordinal models in prior runs (~MAE 1.37). Small dataset (42 participants) limits capacity. Does not beat lag1_fatigue or expanding_mean. CPU-only training.
+Limitations: MultiClass loss is nominal; order respected at prediction time via expected value.
 
 
 HISTORY / HYBRID ORDINAL MODELS
@@ -67,7 +97,6 @@ Purpose: CatBoost on same-day features plus seven leakage-safe history columns.
 Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}; loss_mode {rmse, multiclass}.
 Prediction: RMSE mode — continuous output clipped to [0, 5]. Multiclass mode — expected value E[y] over classes 0–5, then clip.
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: History features overlap with persistence baselines; gains over expanding_mean (~0.84) may be small in prior runs. Stability across seeds should be checked (run_stability_study in validation.py) before claiming robust improvement.
 
 
 ### catboost_residual_expanding
@@ -77,4 +106,3 @@ Purpose: Predict deviation from expanding-mean persistence baseline, then add ba
 Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}. RMSE on residual only.
 Prediction: clip(round(expanding_mean_prior + CatBoost_residual), 0, 5).
 Evaluation: CV MAE on final ordinal prediction. Test MAE, RMSE, R2, QWK.
-Limitations: Underperformed catboost_history on primary split in prior runs (~0.86 vs ~0.81 test MAE). Expanding mean is already available to catboost_history as a feature; explicit residual decomposition did not help on this dataset.

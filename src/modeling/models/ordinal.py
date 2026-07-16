@@ -8,7 +8,8 @@ import mord
 from catboost import CatBoostClassifier, CatBoostRegressor
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from statsmodels.miscmodels.ordinal_model import OrderedModel
@@ -29,11 +30,12 @@ PARTICIPANT_CONSTANT_COLS = {
 }
 DAY_VARYING_CATEGORICAL = ["is_weekend", "phase", "exerciselevel_num"]
 FIT_METHODS = ("lbfgs", "bfgs")
+NUM_ORDINAL_CLASSES = 6
+NUM_ORDINAL_THRESHOLDS = NUM_ORDINAL_CLASSES - 1
 
 
-def build_ordered_logistic(alpha=1.0, **kwargs):
-    del kwargs
-    preprocessor = ColumnTransformer(
+def _tabular_preprocessor():
+    return ColumnTransformer(
         [
             ("num", StandardScaler(), NUMERIC_FEATURES),
             (
@@ -43,9 +45,23 @@ def build_ordered_logistic(alpha=1.0, **kwargs):
             ),
         ]
     )
+
+
+def build_linear_regression(alpha=1.0, **kwargs):
+    del kwargs
     return Pipeline(
         [
-            ("prep", preprocessor),
+            ("prep", _tabular_preprocessor()),
+            ("model", OrdinalRegressorWrapper(Ridge(alpha=alpha))),
+        ]
+    )
+
+
+def build_ordered_logistic(alpha=1.0, **kwargs):
+    del kwargs
+    return Pipeline(
+        [
+            ("prep", _tabular_preprocessor()),
             ("model", mord.LogisticAT(alpha=alpha)),
         ]
     )
@@ -69,7 +85,7 @@ def build_ordinal_rf(
     )
 
 
-def build_catboost_ordinal(
+def build_catboost_regressor(
     iterations=300,
     depth=6,
     learning_rate=0.05,
@@ -84,6 +100,40 @@ def build_catboost_ordinal(
             learning_rate=learning_rate,
             l2_leaf_reg=l2_leaf_reg,
         )
+    )
+
+
+def build_ordinal_forest(
+    n_estimators=300,
+    max_depth=None,
+    min_samples_leaf=1,
+    **kwargs,
+):
+    del kwargs
+    return CumulativeOrdinalForest(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        random_state=RANDOM_STATE,
+    )
+
+
+def build_catboost_ordinal(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+    **kwargs,
+):
+    del kwargs
+    return CatBoostOrdinalWrapper(
+        _make_catboost_classifier(
+            iterations=iterations,
+            depth=depth,
+            learning_rate=learning_rate,
+            l2_leaf_reg=l2_leaf_reg,
+        ),
+        loss_mode="multiclass",
     )
 
 
@@ -116,6 +166,26 @@ def _make_catboost_regressor(
 ):
     return CatBoostRegressor(
         loss_function="RMSE",
+        iterations=iterations,
+        depth=depth,
+        learning_rate=learning_rate,
+        l2_leaf_reg=l2_leaf_reg,
+        random_state=RANDOM_STATE,
+        verbose=0,
+        train_dir=None,
+    )
+
+
+def _make_catboost_classifier(
+    iterations=300,
+    depth=6,
+    learning_rate=0.05,
+    l2_leaf_reg=3.0,
+):
+    return CatBoostClassifier(
+        loss_function="MultiClass",
+        classes_count=NUM_ORDINAL_CLASSES,
+        auto_class_weights="Balanced",
         iterations=iterations,
         depth=depth,
         learning_rate=learning_rate,
@@ -163,6 +233,69 @@ class OrdinalRegressorWrapper(BaseEstimator):
     def predict(self, X):
         preds = self.regressor.predict(X)
         return clip_ordinal_predictions(preds)
+
+
+class CumulativeOrdinalForest(BaseEstimator):
+    """All-threshold random forest ensemble for ordered fatigue classes."""
+
+    def __init__(
+        self,
+        n_estimators=300,
+        max_depth=None,
+        min_samples_leaf=1,
+        random_state=RANDOM_STATE,
+    ):
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        self.min_samples_leaf = min_samples_leaf
+        self.random_state = random_state
+        self.threshold_models_ = None
+
+    def _make_threshold_classifier(self):
+        return RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            min_samples_leaf=self.min_samples_leaf,
+            class_weight="balanced",
+            random_state=self.random_state,
+            n_jobs=-1,
+        )
+
+    @staticmethod
+    def _positive_class_prob(model, X):
+        proba = model.predict_proba(X)
+        classes = list(model.classes_)
+        if 1 not in classes:
+            return np.zeros(len(X)) if 0 in classes else np.ones(len(X))
+        return proba[:, classes.index(1)]
+
+    def fit(self, X, y):
+        y = np.asarray(y).astype(int)
+        self.threshold_models_ = []
+        for threshold in range(NUM_ORDINAL_THRESHOLDS):
+            y_gt = (y > threshold).astype(int)
+            model = self._make_threshold_classifier()
+            model.fit(X, y_gt)
+            self.threshold_models_.append(model)
+        return self
+
+    def _prob_greater_than(self, X):
+        n_samples = len(X)
+        prob_gt = np.zeros((n_samples, NUM_ORDINAL_CLASSES), dtype=float)
+        for threshold, model in enumerate(self.threshold_models_):
+            prob_gt[:, threshold] = self._positive_class_prob(model, X)
+        prob_gt[:, NUM_ORDINAL_THRESHOLDS] = 0.0
+        for threshold in range(1, NUM_ORDINAL_CLASSES):
+            prob_gt[:, threshold] = np.minimum(prob_gt[:, threshold], prob_gt[:, threshold - 1])
+        return prob_gt
+
+    def predict(self, X):
+        prob_gt = self._prob_greater_than(X)
+        prob_le = np.ones((prob_gt.shape[0], NUM_ORDINAL_CLASSES + 1), dtype=float)
+        prob_le[:, 1:] = prob_gt
+        class_probs = np.maximum(prob_le[:, :-1] - prob_le[:, 1:], 0.0)
+        expected = class_probs @ np.arange(NUM_ORDINAL_CLASSES)
+        return clip_ordinal_predictions(expected)
 
 
 class CatBoostOrdinalWrapper(BaseEstimator):

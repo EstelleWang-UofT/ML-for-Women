@@ -1,0 +1,49 @@
+Fatigue Modeling — Multiclass Models
+======================================
+
+Target: fatigue_num (0–5, six classes). Primary metric: weighted F1.
+Also report macro F1 and accuracy. Refresh metrics after re-running fatigue_modeling.ipynb.
+
+
+TUNED MULTICLASS MODELS
+-----------------------
+
+### lightgbm
+
+Task: Multiclass classification (fatigue_num 0–5)
+Purpose: Gradient-boosted trees with balanced class weights across six fatigue levels.
+Optuna: n_estimators [100, 500], max_depth [3, 12], learning_rate log-uniform [0.01, 0.3], num_leaves [15, 63], min_child_samples [5, 50].
+Prediction: Hard class label 0–5 (argmax).
+Evaluation: CV weighted F1. Test weighted F1, macro F1, accuracy.
+
+
+### random_forest
+
+Task: Multiclass classification (fatigue_num 0–5)
+Purpose: Bagged decision trees; simpler nonlinear alternative to LightGBM.
+Optuna: n_estimators [100, 500], max_depth [3, 20], min_samples_leaf [1, 10], max_features {sqrt, log2}.
+Prediction: Hard class label 0–5 (majority vote).
+Evaluation: CV weighted F1. Test weighted F1, macro F1, accuracy.
+
+
+HISTORY / HYBRID MULTICLASS MODELS
+----------------------------------
+
+### catboost_history
+
+Task: Multiclass classification (fatigue_num 0–5)
+Purpose: CatBoost MultiClass on same-day features plus seven leakage-safe history columns.
+Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}.
+Prediction: Hard class label 0–5 (argmax over six classes).
+Evaluation: CV weighted F1. Test weighted F1, macro F1, accuracy.
+Limitations: Compare against lag1_fatigue and expanding_mean persistence baselines.
+
+
+### catboost_residual_expanding
+
+Task: Multiclass classification (fatigue_num 0–5) — hybrid / residual model
+Purpose: Expanding-mean fatigue prior plus CatBoost residual on history features (same wrapper as ordinal hybrid).
+Optuna: CatBoost + ewma_alpha + rolling_window (RMSE on residual).
+Prediction: clip(round(expanding_mean_prior + CatBoost_residual), 0, 5).
+Evaluation: CV weighted F1. Test weighted F1, macro F1, accuracy.
+Limitations: Residual decomposition may not beat direct history classifier if prior is already informative.

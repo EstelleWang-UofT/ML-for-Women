@@ -52,18 +52,12 @@ class SplitBundle:
     X_test_history_tree: pd.DataFrame
     y_ord_train_val: pd.Series
     y_ord_test: pd.Series
-    y_clf_train_val: pd.Series
-    y_clf_test: pd.Series
     groups_train_val: pd.Series
     groups_test: pd.Series
     y_lag1_train_val: pd.Series
     y_lag1_test: pd.Series
     y_expanding_train_val: pd.Series
     y_expanding_test: pd.Series
-    y_clf_lag1_train_val: pd.Series
-    y_clf_lag1_test: pd.Series
-    y_clf_expanding_train_val: pd.Series
-    y_clf_expanding_test: pd.Series
     seq_train_val: SequenceData
     seq_test: SequenceData
 
@@ -178,35 +172,6 @@ def compute_fatigue_lag1(
     ordered = _sort_by_group_time(df, group_cols, time_col)
     lag1 = ordered.groupby(group_cols, sort=False)[target_col].shift(1)
     return lag1.reindex(df.index)
-
-
-def compute_high_fatigue_lag1(
-    df,
-    group_cols=None,
-    time_col=TIME_COL,
-    target_col="fatigue_num",
-    threshold=HIGH_FATIGUE_THRESHOLD,
-):
-    """Previous-day high-fatigue indicator (0/1); NaN on each wave's first day."""
-    lag1 = compute_fatigue_lag1(df, group_cols, time_col, target_col)
-    out = (lag1 >= threshold).astype(float)
-    out[lag1.isna()] = np.nan
-    return out
-
-
-def compute_expanding_high_fatigue_rate_prior(
-    df,
-    group_cols=None,
-    time_col=TIME_COL,
-    target_col="fatigue_num",
-    threshold=HIGH_FATIGUE_THRESHOLD,
-):
-    """Expanding mean of past high-fatigue rate (0-1) per participant wave."""
-    high_fatigue = (df[target_col] >= threshold).astype(float)
-    work = df.assign(_high_fatigue=high_fatigue)
-    return compute_expanding_mean_prior(
-        work, group_cols=group_cols, time_col=time_col, target_col="_high_fatigue"
-    )
 
 
 def compute_expanding_mean_prior(
@@ -534,16 +499,11 @@ def prepare_splits(
     X_test_history_tree = build_tree_matrix(X_test_history)
 
     y_ordinal = df["fatigue_num"].astype(int)
-    y_high_fatigue = (df["fatigue_num"] >= HIGH_FATIGUE_THRESHOLD).astype(int)
     y_lag1 = compute_fatigue_lag1(df)
     y_expanding = compute_expanding_mean_prior(df)
-    y_clf_lag1 = compute_high_fatigue_lag1(df)
-    y_clf_expanding = compute_expanding_high_fatigue_rate_prior(df)
 
     y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
     y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
-    y_clf_expanding_train_val = y_clf_expanding.loc[train_val_mask].reset_index(drop=True)
-    y_clf_expanding_test = y_clf_expanding.loc[test_mask].reset_index(drop=True)
 
     return SplitBundle(
         df=df,
@@ -561,18 +521,12 @@ def prepare_splits(
         X_test_history_tree=X_test_history_tree,
         y_ord_train_val=y_ordinal.loc[train_val_mask].reset_index(drop=True),
         y_ord_test=y_ordinal.loc[test_mask].reset_index(drop=True),
-        y_clf_train_val=y_high_fatigue.loc[train_val_mask].reset_index(drop=True),
-        y_clf_test=y_high_fatigue.loc[test_mask].reset_index(drop=True),
         groups_train_val=df.loc[train_val_mask, "id"].reset_index(drop=True),
         groups_test=df.loc[test_mask, "id"].reset_index(drop=True),
         y_lag1_train_val=y_lag1.loc[train_val_mask].reset_index(drop=True),
         y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
         y_expanding_train_val=y_expanding_train_val,
         y_expanding_test=y_expanding_test,
-        y_clf_lag1_train_val=y_clf_lag1.loc[train_val_mask].reset_index(drop=True),
-        y_clf_lag1_test=y_clf_lag1.loc[test_mask].reset_index(drop=True),
-        y_clf_expanding_train_val=y_clf_expanding_train_val,
-        y_clf_expanding_test=y_clf_expanding_test,
         seq_train_val=_subset_sequence_data(seq_all, train_val_mask.values),
         seq_test=_subset_sequence_data(seq_all, test_mask.values),
     )

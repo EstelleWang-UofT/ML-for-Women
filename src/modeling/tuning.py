@@ -3,19 +3,15 @@
 import optuna
 
 from modeling.config import (
-    CLASSIFICATION_METRIC,
     EWMA_ALPHA,
+    MULTICLASS_METRIC,
     N_CV_FOLDS,
     OPTUNA_TRIALS,
     ORDINAL_METRIC,
     ROLLING_WINDOW,
 )
 from modeling.cv import run_group_cv, run_group_cv_sequences
-from modeling.data import (
-    build_history_tree_matrices,
-    build_hybrid_tree_matrices,
-    compute_expanding_high_fatigue_rate_prior,
-)
+from modeling.data import build_history_tree_matrices, build_hybrid_tree_matrices
 from modeling.models.ordinal import attach_groups
 from modeling.registry import (
     MIXED_EFFECTS_MODELS,
@@ -27,7 +23,11 @@ from modeling.registry import (
 
 
 def _primary_metric(task):
-    return ORDINAL_METRIC if task == "ordinal" else CLASSIFICATION_METRIC
+    if task == "ordinal":
+        return ORDINAL_METRIC
+    if task == "multiclass":
+        return MULTICLASS_METRIC
+    raise ValueError(f"Unknown task: {task}")
 
 
 def _direction(task):
@@ -46,16 +46,12 @@ def _build_trial_matrices(name, bundle, params, task="ordinal"):
             rolling_window=rolling_window,
         )[0]
     if is_residual_tree_model(name, task=task):
-        prior_series = None
-        if task == "classification":
-            prior_series = compute_expanding_high_fatigue_rate_prior(bundle.df)
         return build_hybrid_tree_matrices(
             bundle.df,
             bundle.train_val_mask,
             bundle.test_mask,
             ewma_alpha=ewma_alpha,
             rolling_window=rolling_window,
-            prior_series=prior_series,
         )[0]
     raise ValueError(f"No trial matrix builder for model: {name}")
 
@@ -151,7 +147,7 @@ def tune_all_models(
         params, score = tune_model(
             name=name,
             registry=registry,
-            search_space=get_search_space(name),
+            search_space=get_search_space(name, task=task),
             y_train_val=y_train_val,
             groups=groups,
             task=task,

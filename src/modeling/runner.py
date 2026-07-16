@@ -2,11 +2,7 @@
 
 from modeling.config import EWMA_ALPHA, N_CV_FOLDS, OPTUNA_TRIALS, ROLLING_WINDOW
 from modeling.cv import run_model_benchmark
-from modeling.data import (
-    build_history_tree_matrices,
-    build_hybrid_tree_matrices,
-    compute_expanding_high_fatigue_rate_prior,
-)
+from modeling.data import build_history_tree_matrices, build_hybrid_tree_matrices
 from modeling.registry import (
     get_search_space,
     is_history_tree_model,
@@ -48,7 +44,7 @@ def tune_and_benchmark_model(
         params, cv_score = tune_model(
             name=name,
             registry=registry,
-            search_space=get_search_space(name),
+            search_space=get_search_space(name, task=task),
             task=task,
             n_trials=n_trials,
             n_splits=n_splits,
@@ -67,14 +63,10 @@ def tune_and_benchmark_model(
         )
     elif use_residual:
         history_params = _history_params_from_params(params)
-        prior_series = None
-        if task == "classification":
-            prior_series = compute_expanding_high_fatigue_rate_prior(bundle.df)
         X_train_val, X_test = build_hybrid_tree_matrices(
             bundle.df,
             bundle.train_val_mask,
             bundle.test_mask,
-            prior_series=prior_series,
             **history_params,
         )
     else:

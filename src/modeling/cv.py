@@ -60,8 +60,8 @@ def run_group_cv(
         metrics["fold"] = fold
         metrics["n_train_participants"] = len(train_group_ids)
         metrics["n_val_participants"] = len(val_group_ids)
-        if task == "classification":
-            metrics["val_positive_rate"] = float(y_series.iloc[val_idx].mean())
+        if task == "multiclass":
+            metrics["val_mode_class"] = int(pd.Series(y_series.iloc[val_idx]).mode().iloc[0])
         fold_results.append(metrics)
 
     fold_df = pd.DataFrame(fold_results)
@@ -69,7 +69,7 @@ def run_group_cv(
         c
         for c in fold_df.columns
         if c
-        not in {"fold", "n_train_participants", "n_val_participants", "val_positive_rate"}
+        not in {"fold", "n_train_participants", "n_val_participants", "val_mode_class"}
     ]
     return fold_df, summarize_fold_metrics(fold_df, metric_cols)
 
@@ -103,8 +103,8 @@ def run_group_cv_sequences(
         metrics["fold"] = fold
         metrics["n_train_participants"] = len(train_group_ids)
         metrics["n_val_participants"] = len(val_group_ids)
-        if task == "classification":
-            metrics["val_positive_rate"] = float(val_seq.y.mean())
+        if task == "multiclass":
+            metrics["val_mode_class"] = int(pd.Series(val_seq.y).mode().iloc[0])
         fold_results.append(metrics)
 
     fold_df = pd.DataFrame(fold_results)
@@ -112,7 +112,7 @@ def run_group_cv_sequences(
         c
         for c in fold_df.columns
         if c
-        not in {"fold", "n_train_participants", "n_val_participants", "val_positive_rate"}
+        not in {"fold", "n_train_participants", "n_val_participants", "val_mode_class"}
     ]
     return fold_df, summarize_fold_metrics(fold_df, metric_cols)
 
