@@ -10,7 +10,6 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import Ridge
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
@@ -47,24 +46,54 @@ def _tabular_preprocessor():
     )
 
 
+class RidgeOrdinalEstimator(BaseEstimator):
+    """Ridge on scaled/OHE tabular features with clipped ordinal predictions."""
+
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        self.prep_ = None
+        self.model_ = None
+
+    def fit(self, X, y):
+        self.prep_ = _tabular_preprocessor()
+        Xt = self.prep_.fit_transform(X)
+        self.model_ = Ridge(alpha=self.alpha)
+        self.model_.fit(Xt, y)
+        return self
+
+    def predict(self, X):
+        Xt = self.prep_.transform(X)
+        return clip_ordinal_predictions(self.model_.predict(Xt))
+
+
+class OrderedLogisticEstimator(BaseEstimator):
+    """mord all-threshold logistic on scaled/OHE tabular features."""
+
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        self.prep_ = None
+        self.model_ = None
+
+    def fit(self, X, y):
+        self.prep_ = _tabular_preprocessor()
+        Xt = self.prep_.fit_transform(X)
+        self.model_ = mord.LogisticAT(alpha=self.alpha)
+        self.model_.fit(Xt, y)
+        return self
+
+    def predict(self, X):
+        Xt = self.prep_.transform(X)
+        return self.model_.predict(Xt)
+
+
 def build_linear_regression(alpha=1.0, **kwargs):
     del kwargs
-    return Pipeline(
-        [
-            ("prep", _tabular_preprocessor()),
-            ("model", OrdinalRegressorWrapper(Ridge(alpha=alpha))),
-        ]
-    )
+    return RidgeOrdinalEstimator(alpha=alpha)
 
 
 def build_ordered_logistic(alpha=1.0, **kwargs):
     del kwargs
-    return Pipeline(
-        [
-            ("prep", _tabular_preprocessor()),
-            ("model", mord.LogisticAT(alpha=alpha)),
-        ]
-    )
+    return OrderedLogisticEstimator(alpha=alpha)
 
 
 def build_ordinal_rf(

@@ -11,4 +11,5 @@ catboost
 mord
 statsmodels
 optuna
+ipywidgets
 torch

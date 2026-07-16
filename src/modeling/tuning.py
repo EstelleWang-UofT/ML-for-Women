@@ -1,5 +1,7 @@
 """Optuna hyperparameter tuning with GroupKFold on train/val only."""
 
+import warnings
+
 import optuna
 
 from modeling.config import (
@@ -32,6 +34,40 @@ def _primary_metric(task):
 
 def _direction(task):
     return "minimize" if task == "ordinal" else "maximize"
+
+
+def _run_group_cv(factory, X, y, groups, n_splits, task, test_ids):
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            category=FutureWarning,
+            message=".*Pipeline instance is not fitted yet.*",
+        )
+        return run_group_cv(
+            factory,
+            X,
+            y,
+            groups,
+            n_splits=n_splits,
+            task=task,
+            test_ids=test_ids,
+        )
+
+
+def _run_group_cv_sequences(factory, seq_data, n_splits, task, test_ids):
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            category=FutureWarning,
+            message=".*Pipeline instance is not fitted yet.*",
+        )
+        return run_group_cv_sequences(
+            factory,
+            seq_data,
+            n_splits=n_splits,
+            task=task,
+            test_ids=test_ids,
+        )
 
 
 def _build_trial_matrices(name, bundle, params, task="ordinal"):
@@ -91,7 +127,7 @@ def tune_model(
         params = search_space(trial)
         factory = make_model_factory(name, params, registry)
         if use_sequences:
-            fold_df, _ = run_group_cv_sequences(
+            fold_df, _ = _run_group_cv_sequences(
                 factory,
                 seq_train_val,
                 n_splits=n_splits,
@@ -100,7 +136,7 @@ def tune_model(
             )
         elif use_history or use_residual:
             X_tv = _build_trial_matrices(name, bundle, params, task=task)
-            fold_df, _ = run_group_cv(
+            fold_df, _ = _run_group_cv(
                 factory,
                 X_tv,
                 y_train_val,
@@ -110,7 +146,7 @@ def tune_model(
                 test_ids=test_ids,
             )
         else:
-            fold_df, _ = run_group_cv(
+            fold_df, _ = _run_group_cv(
                 factory,
                 X_train_val,
                 y_train_val,
