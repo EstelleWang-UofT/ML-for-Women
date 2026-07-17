@@ -4,7 +4,6 @@ from modeling.config import (
     CATEGORICAL_FEATURES,
     DATA_PATH,
     FEATURE_COLUMNS,
-    HIGH_FATIGUE_THRESHOLD,
     N_CV_FOLDS,
     NUMERIC_FEATURES,
     OPTUNA_TRIALS,
@@ -15,16 +14,14 @@ from modeling.cv import evaluate_on_test, run_group_cv, run_model_benchmark
 from modeling.data import load_fatigue_data, prepare_splits, split_summary_table
 from modeling.metrics import compute_metrics
 from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
-from modeling.registry import MULTICLASS_MODELS, ORDINAL_MODELS, get_search_space
+from modeling.registry import ORDINAL_MODELS, get_search_space
 from modeling.runner import tune_and_benchmark_model
-from modeling.tuning import tune_all_models, tune_model
+from modeling.tuning import tune_model
 
 __all__ = [
     "CATEGORICAL_FEATURES",
     "DATA_PATH",
     "FEATURE_COLUMNS",
-    "HIGH_FATIGUE_THRESHOLD",
-    "MULTICLASS_MODELS",
     "N_CV_FOLDS",
     "NUMERIC_FEATURES",
     "OPTUNA_TRIALS",
@@ -41,7 +38,6 @@ __all__ = [
     "run_model_benchmark",
     "split_summary_table",
     "summarize_baseline_metrics",
-    "tune_all_models",
     "tune_and_benchmark_model",
     "tune_model",
 ]

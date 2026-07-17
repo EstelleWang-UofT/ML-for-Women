@@ -6,10 +6,7 @@ seaborn
 missingno
 nbformat
 scipy
-lightgbm
 catboost
 mord
 statsmodels
 optuna
-ipywidgets
-torch

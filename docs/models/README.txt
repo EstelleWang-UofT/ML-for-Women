@@ -4,7 +4,6 @@ Fatigue Modeling — Documentation
 Shared pipeline context for all models. Per-model details:
   baselines.txt      — persistence and naive baselines
   ordinal.txt        — ordinal regression, ordinal classification, and history/hybrid models
-  multiclass.txt     — six-class fatigue models and history/hybrid models
 
 Implementations live under src/modeling/.
 
@@ -19,11 +18,7 @@ Ordinal models (task='ordinal'):
   Families:
     - Ordinal regression: linear_regression, ordinal_rf, catboost_regressor
     - Ordinal classification: ordered_logistic, ordinal_forest, mixed_effects, catboost_ordinal
-
-Nominal multiclass classification (task='multiclass'):
-  Target: fatigue_num (integer 0–5, six classes)
-  Primary metric: weighted F1
-  Additional metrics: macro F1, accuracy
+    - History: catboost_history, catboost_residual_expanding
 
 
 DATA
@@ -58,11 +53,6 @@ Categorical (CATEGORICAL_FEATURES):
   is_weekend, phase, exerciselevel_num,
   menstrual_health_literacy_num, sexually_active_num
 
-Sequence features (SEQUENCE_FEATURE_COLUMNS):
-  NUMERIC_FEATURES plus is_weekend, exerciselevel_num,
-  menstrual_health_literacy_num, sexually_active_num
-  (phase encoded as integer index at sequence build time)
-
 Phase order: Menstrual, Follicular, Fertility, Luteal
 
 History features (HISTORY_FEATURES — past days only, per participant wave;
@@ -83,8 +73,9 @@ Function: modeling.data.prepare_splits(stratify=True by default)
 
 After splitting, fills menstrual_health_literacy_num NaNs using the train_val median.
 
-1. Compute per-participant high-fatigue rate (fatigue_num >= 4).
-2. Assign participants to tertile strata via pd.qcut on that rate.
+1. Compute per-participant mean fatigue_num.
+2. Assign participants to tertile strata via pd.qcut on mean fatigue (median
+   split fallback if qcut fails).
 3. Hold out ~20% of participants (TEST_SIZE=0.2, RANDOM_STATE=42) using
    StratifiedShuffleSplit on strata labels.
 4. All rows from held-out participants go to test; no row-level leakage.
@@ -93,7 +84,7 @@ After splitting, fills menstrual_health_literacy_num NaNs using the train_val me
 CROSS-VALIDATION
 ----------------
 
-Function: modeling.cv.run_group_cv / run_group_cv_sequences
+Function: modeling.cv.run_group_cv
 
 Protocol: GroupKFold (N_CV_FOLDS=5) on train_val participants only.
 Test participant ids are excluded from all CV folds.
@@ -103,9 +94,9 @@ Each fold trains on some participants, validates on disjoint participants.
 HYPERPARAMETER TUNING
 ---------------------
 
-Function: modeling.tuning.tune_model / tune_all_models
+Function: modeling.tuning.tune_model
 Library: Optuna (OPTUNA_TRIALS=30 per model)
-Objective: minimize mean CV MAE (ordinal) or maximize mean CV weighted F1 (multiclass)
+Objective: minimize mean CV MAE
 Search spaces: src/modeling/registry.py get_search_space()
 
 After tuning, final models are refit on all train_val data and evaluated once

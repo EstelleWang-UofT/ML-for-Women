@@ -29,12 +29,6 @@ FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 TIME_SERIES_GROUP_COLS = ["id", "study_interval"]
 TIME_COL = "day_in_study"
-SEQUENCE_FEATURE_COLUMNS = NUMERIC_FEATURES + [
-    "is_weekend",
-    "exerciselevel_num",
-    "menstrual_health_literacy_num",
-    "sexually_active_num",
-]
 
 PHASE_ORDER = ["Menstrual", "Follicular", "Fertility", "Luteal"]
 PHASE_TO_IDX = {phase: idx for idx, phase in enumerate(PHASE_ORDER)}
@@ -42,11 +36,9 @@ PHASE_TO_IDX = {phase: idx for idx, phase in enumerate(PHASE_ORDER)}
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 N_CV_FOLDS = 5
-HIGH_FATIGUE_THRESHOLD = 4
 OPTUNA_TRIALS = 30
 
 ORDINAL_METRIC = "mae"
-MULTICLASS_METRIC = "weighted_f1"
 
 HISTORY_FEATURES = [
     "fatigue_lag1",

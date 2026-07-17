@@ -45,36 +45,3 @@ Optuna: None (rule-based prior from fatigue_expanding_mean).
 Prediction: Round prior, clip to [0, 5]; NaN priors use training fallback.
 Evaluation: CV and test MAE, RMSE, R2, QWK.
 Limitations: Typical test MAE ~0.84 — best among ordinal baselines in prior runs. Still ignores activity features; only uses own fatigue history. Requires prior days within wave.
-
-
-MULTICLASS BASELINES
---------------------
-
-### global_mode
-
-Task: Multiclass baseline (fatigue_num 0–5)
-Purpose: Predict the most frequent fatigue level in training data for every row.
-Optuna: None (rule-based).
-Prediction: Constant integer class (mode of training target).
-Evaluation: CV and test weighted F1, macro F1, accuracy.
-Limitations: Ignores features and temporal structure. Useful sanity lower bound.
-
-
-### lag1_fatigue
-
-Task: Multiclass baseline (fatigue_num 0–5)
-Purpose: Persistence benchmark — predict yesterday's fatigue for the same participant wave.
-Optuna: None (rule-based prior from fatigue_lag1).
-Prediction: Round prior, clip to [0, 5]; NaN priors use training fallback.
-Evaluation: CV and test weighted F1, macro F1, accuracy.
-Limitations: Strong competitor when fatigue state persists day-to-day. First day of each wave has NaN prior.
-
-
-### expanding_mean
-
-Task: Multiclass baseline (fatigue_num 0–5)
-Purpose: Participant-wave running mean of all prior fatigue ratings (excluding current day).
-Optuna: None (rule-based prior from fatigue_expanding_mean).
-Prediction: Round prior, clip to [0, 5]; NaN priors use training fallback.
-Evaluation: CV and test weighted F1, macro F1, accuracy.
-Limitations: Often the strongest simple baseline. Still ignores activity features.

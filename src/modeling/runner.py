@@ -39,7 +39,7 @@ def tune_and_benchmark_model(
         tune_kwargs = {
             k: v
             for k, v in data_kwargs.items()
-            if k in {"X_train_val", "y_train_val", "groups", "seq_train_val", "bundle"}
+            if k in {"X_train_val", "y_train_val", "groups", "bundle"}
         }
         params, cv_score = tune_model(
             name=name,
@@ -74,25 +74,18 @@ def tune_and_benchmark_model(
         X_test = data_kwargs["X_test"]
 
     factory = make_model_factory(name, params, registry)
-    benchmark_kwargs = {
-        "name": name,
-        "model_factory": factory,
-        "task": task,
-        "n_splits": n_splits,
-        "test_ids": bundle.test_ids,
-        "y_train_val": data_kwargs["y_train_val"],
-        "y_test": data_kwargs["y_test"],
-        "groups": data_kwargs["groups"],
-        "use_sequences": data_kwargs.get("use_sequences", False),
-    }
-    if benchmark_kwargs["use_sequences"]:
-        benchmark_kwargs["seq_train_val"] = data_kwargs["seq_train_val"]
-        benchmark_kwargs["seq_test"] = data_kwargs["seq_test"]
-    else:
-        benchmark_kwargs["X_train_val"] = X_train_val
-        benchmark_kwargs["X_test"] = X_test
-
-    result = run_model_benchmark(**benchmark_kwargs)
+    result = run_model_benchmark(
+        name=name,
+        model_factory=factory,
+        task=task,
+        n_splits=n_splits,
+        test_ids=bundle.test_ids,
+        y_train_val=data_kwargs["y_train_val"],
+        y_test=data_kwargs["y_test"],
+        groups=data_kwargs["groups"],
+        X_train_val=X_train_val,
+        X_test=X_test,
+    )
     result["best_params"] = params
     result["best_cv_score"] = cv_score
     if history_params is not None:

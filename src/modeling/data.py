@@ -10,29 +10,16 @@ from modeling.config import (
     DATA_PATH,
     EWMA_ALPHA,
     FEATURE_COLUMNS,
-    HIGH_FATIGUE_THRESHOLD,
     HISTORY_FEATURES,
     NUMERIC_FEATURES,
     PHASE_ORDER,
-    PHASE_TO_IDX,
     PRIOR_COL,
     RANDOM_STATE,
     ROLLING_WINDOW,
-    SEQUENCE_FEATURE_COLUMNS,
     TEST_SIZE,
     TIME_COL,
     TIME_SERIES_GROUP_COLS,
 )
-
-
-@dataclass
-class SequenceData:
-    X: np.ndarray
-    lengths: np.ndarray
-    y: np.ndarray
-    groups: np.ndarray
-    y_lag1: np.ndarray | None = None
-    y_expanding_mean: np.ndarray | None = None
 
 
 @dataclass
@@ -58,8 +45,6 @@ class SplitBundle:
     y_lag1_test: pd.Series
     y_expanding_train_val: pd.Series
     y_expanding_test: pd.Series
-    seq_train_val: SequenceData
-    seq_test: SequenceData
 
 
 def load_fatigue_data(path=DATA_PATH):
@@ -89,23 +74,14 @@ def participant_strata(
     df,
     id_col="id",
     target_col="fatigue_num",
-    threshold=HIGH_FATIGUE_THRESHOLD,
 ):
-    """Per-participant stratification labels based on high-fatigue rate."""
-    stats = df.groupby(id_col)[target_col].agg(
-        high_fatigue_rate=lambda s: (s >= threshold).mean(),
-        mean_fatigue="mean",
-    )
+    """Per-participant stratification labels based on mean fatigue_num."""
+    mean_fatigue = df.groupby(id_col)[target_col].mean()
     try:
-        stats["stratum"] = pd.qcut(
-            stats["high_fatigue_rate"],
-            q=3,
-            duplicates="drop",
-        )
+        return pd.qcut(mean_fatigue, q=3, duplicates="drop")
     except ValueError:
-        median_rate = stats["high_fatigue_rate"].median()
-        stats["stratum"] = (stats["high_fatigue_rate"] >= median_rate).astype(int)
-    return stats["stratum"]
+        median = mean_fatigue.median()
+        return (mean_fatigue >= median).astype(int)
 
 
 def split_participant_ids(
@@ -363,94 +339,6 @@ def build_hybrid_tree_matrices(
     )
 
 
-def _encode_phase_series(phase_series):
-    return phase_series.map(PHASE_TO_IDX).fillna(0).astype(int)
-
-
-def build_sequence_tensors(
-    data,
-    feature_cols=SEQUENCE_FEATURE_COLUMNS,
-    target_col="fatigue_num",
-    group_cols=None,
-    time_col=TIME_COL,
-):
-    group_cols = _resolve_group_cols(data, group_cols)
-    participant_col = "id"
-    seq_group_cols = group_cols
-
-    base_cols = list(dict.fromkeys(seq_group_cols + [time_col, target_col]))
-    work = data[base_cols + [c for c in feature_cols if c in data.columns]].copy()
-    if "phase" in data.columns:
-        work["phase"] = _encode_phase_series(data["phase"])
-        if "phase" not in feature_cols:
-            feature_cols = list(feature_cols) + ["phase"]
-    if "is_weekend" in work.columns:
-        work["is_weekend"] = work["is_weekend"].astype(int)
-
-    feature_cols = [c for c in feature_cols if c in work.columns]
-    grouped = {}
-    for seq_key, gdf in work.groupby(seq_group_cols, sort=False):
-        grouped[seq_key] = gdf.sort_values(time_col)
-
-    seq_rows = []
-    y_list = []
-    y_lag1_list = []
-    y_expanding_list = []
-    groups_list = []
-
-    lag1_all = compute_fatigue_lag1(data, group_cols, time_col, target_col)
-    expanding_all = compute_expanding_mean_prior(data, group_cols, time_col, target_col)
-
-    for idx, row in work.iterrows():
-        seq_key = tuple(row[col] for col in seq_group_cols)
-        gdf = grouped[seq_key]
-        pos = gdf.index.get_loc(idx)
-        if isinstance(pos, slice):
-            pos = pos.start
-        elif isinstance(pos, np.ndarray):
-            pos = int(np.where(pos)[0][0])
-        feats = gdf[feature_cols].astype(float).values
-        seq_rows.append(feats[: pos + 1])
-        y_list.append(int(row[target_col]))
-        lag_val = lag1_all.loc[idx]
-        exp_val = expanding_all.loc[idx]
-        y_lag1_list.append(np.nan if pd.isna(lag_val) else float(lag_val))
-        y_expanding_list.append(np.nan if pd.isna(exp_val) else float(exp_val))
-        groups_list.append(row[participant_col])
-
-    n_samples = len(seq_rows)
-    n_features = len(feature_cols)
-    max_len = max(len(seq) for seq in seq_rows)
-    X = np.zeros((n_samples, max_len, n_features), dtype=np.float32)
-    lengths = np.zeros(n_samples, dtype=np.int64)
-    for i, seq in enumerate(seq_rows):
-        lengths[i] = len(seq)
-        X[i, : len(seq)] = seq
-
-    return SequenceData(
-        X=X,
-        lengths=lengths,
-        y=np.array(y_list, dtype=np.int64),
-        groups=np.array(groups_list),
-        y_lag1=np.array(y_lag1_list, dtype=np.float64),
-        y_expanding_mean=np.array(y_expanding_list, dtype=np.float64),
-    )
-
-
-def _subset_sequence_data(seq_data: SequenceData, mask: np.ndarray) -> SequenceData:
-    mask = np.asarray(mask, dtype=bool)
-    return SequenceData(
-        X=seq_data.X[mask],
-        lengths=seq_data.lengths[mask],
-        y=seq_data.y[mask],
-        groups=seq_data.groups[mask],
-        y_lag1=seq_data.y_lag1[mask] if seq_data.y_lag1 is not None else None,
-        y_expanding_mean=seq_data.y_expanding_mean[mask]
-        if seq_data.y_expanding_mean is not None
-        else None,
-    )
-
-
 def prepare_splits(
     df,
     test_size=TEST_SIZE,
@@ -486,7 +374,6 @@ def prepare_splits(
     X_all_history = make_feature_matrix_with_history(
         df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
     )
-    seq_all = build_sequence_tensors(df)
 
     X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
     X_test = X_all.loc[test_mask].reset_index(drop=True)
@@ -527,12 +414,10 @@ def prepare_splits(
         y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
         y_expanding_train_val=y_expanding_train_val,
         y_expanding_test=y_expanding_test,
-        seq_train_val=_subset_sequence_data(seq_all, train_val_mask.values),
-        seq_test=_subset_sequence_data(seq_all, test_mask.values),
     )
 
 
-def split_summary_table(bundle: SplitBundle, y_high_fatigue: pd.Series):
+def split_summary_table(bundle: SplitBundle):
     rows = []
     for name, ids, mask in [
         ("train_val", bundle.train_val_ids, bundle.df["id"].isin(bundle.train_val_ids)),
@@ -544,7 +429,6 @@ def split_summary_table(bundle: SplitBundle, y_high_fatigue: pd.Series):
                 "participants": len(ids),
                 "rows": int(mask.sum()),
                 "mean_fatigue": float(bundle.df.loc[mask, "fatigue_num"].mean()),
-                "high_fatigue_rate": float(y_high_fatigue[mask].mean()),
             }
         )
     return pd.DataFrame(rows)

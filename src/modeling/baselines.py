@@ -8,6 +8,8 @@ from modeling.config import N_CV_FOLDS
 from modeling.data import attach_prior_frame
 from modeling.metrics import clip_ordinal_predictions
 
+ORDINAL_METRIC_COLS = ["mae", "rmse", "r2", "qwk"]
+
 
 class GlobalMeanBaseline(BaseEstimator):
     """Predict the rounded training-set mean target for every row."""
@@ -92,34 +94,20 @@ ORDINAL_BASELINES = {
     "expanding_mean": build_expanding_mean_baseline,
 }
 
-MULTICLASS_BASELINES = {
-    "global_mode": build_global_mode_baseline,
-    "lag1_fatigue": build_lag1_baseline,
-    "expanding_mean": build_expanding_mean_baseline,
-}
-
-
-def _metric_cols_for_task(task):
-    if task == "ordinal":
-        return ["mae", "rmse", "r2", "qwk"]
-    if task == "multiclass":
-        return ["weighted_f1", "macro_f1", "accuracy"]
-    raise ValueError(f"Unknown task: {task}")
-
 
 def summarize_baseline_metrics(results, task="ordinal"):
-    metric_cols = _metric_cols_for_task(task)
+    del task
     rows = []
     for result in results:
         row = {"model": result["name"]}
-        cv_mean = result["cv_summary"].loc["mean", metric_cols]
-        row.update({f"cv_{k}": cv_mean[k] for k in metric_cols})
-        row.update({f"test_{k}": result["test_metrics"][k] for k in metric_cols})
+        cv_mean = result["cv_summary"].loc["mean", ORDINAL_METRIC_COLS]
+        row.update({f"cv_{k}": cv_mean[k] for k in ORDINAL_METRIC_COLS})
+        row.update({f"test_{k}": result["test_metrics"][k] for k in ORDINAL_METRIC_COLS})
         rows.append(row)
     return pd.DataFrame(rows).set_index("model")
 
 
-def _run_persistence_baseline(name, builder, bundle, task, n_splits):
+def _run_persistence_baseline(name, builder, bundle, n_splits):
     from modeling.cv import run_model_benchmark
 
     if name == "lag1_fatigue":
@@ -134,7 +122,6 @@ def _run_persistence_baseline(name, builder, bundle, task, n_splits):
     return run_model_benchmark(
         name=name,
         model_factory=builder,
-        task=task,
         n_splits=n_splits,
         test_ids=bundle.test_ids,
         X_train_val=X_train_val,
@@ -147,31 +134,17 @@ def _run_persistence_baseline(name, builder, bundle, task, n_splits):
 
 def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_FOLDS):
     """Evaluate one baseline with the same CV / test protocol as tuned models."""
+    del task
     from modeling.cv import run_model_benchmark
 
     factory = builder
 
     if name in {"lag1_fatigue", "expanding_mean"}:
-        return _run_persistence_baseline(name, builder, bundle, task, n_splits)
-
-    if task == "multiclass":
-        return run_model_benchmark(
-            name=name,
-            model_factory=factory,
-            task=task,
-            n_splits=n_splits,
-            test_ids=bundle.test_ids,
-            X_train_val=bundle.X_train_val_tree,
-            X_test=bundle.X_test_tree,
-            y_train_val=bundle.y_ord_train_val,
-            y_test=bundle.y_ord_test,
-            groups=bundle.groups_train_val,
-        )
+        return _run_persistence_baseline(name, builder, bundle, n_splits)
 
     return run_model_benchmark(
         name=name,
         model_factory=factory,
-        task=task,
         n_splits=n_splits,
         test_ids=bundle.test_ids,
         X_train_val=bundle.X_train_val,
@@ -183,10 +156,10 @@ def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_
 
 
 def run_all_baseline_benchmarks(bundle, task="ordinal", n_splits=N_CV_FOLDS):
+    del task
     results = []
-    registry = ORDINAL_BASELINES if task == "ordinal" else MULTICLASS_BASELINES
-    for name, builder in registry.items():
-        result = run_baseline_benchmark(name, builder, bundle, task=task, n_splits=n_splits)
+    for name, builder in ORDINAL_BASELINES.items():
+        result = run_baseline_benchmark(name, builder, bundle, n_splits=n_splits)
         result["best_params"] = {}
         results.append(result)
     return results
