@@ -55,6 +55,3 @@ ROLLING_WINDOW = 3
 EWMA_ALPHA_RANGE = (0.1, 0.5)
 ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
 PRIOR_COL = "__prior__"
-
-STABILITY_SEEDS = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
-STABILITY_MODELS = ["expanding_mean", "catboost_history", "catboost_residual_expanding"]

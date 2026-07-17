@@ -15,6 +15,7 @@ from statsmodels.miscmodels.ordinal_model import OrderedModel
 
 from modeling.config import (
     CATEGORICAL_FEATURES,
+    HISTORY_FEATURES,
     NUMERIC_FEATURES,
     PHASE_TO_IDX,
     RANDOM_STATE,
@@ -33,10 +34,17 @@ NUM_ORDINAL_CLASSES = 6
 NUM_ORDINAL_THRESHOLDS = NUM_ORDINAL_CLASSES - 1
 
 
-def _tabular_preprocessor():
+def _has_history_features(X):
+    return all(col in X.columns for col in HISTORY_FEATURES)
+
+
+def _tabular_preprocessor(include_history=False):
+    numeric_features = list(NUMERIC_FEATURES)
+    if include_history:
+        numeric_features = numeric_features + list(HISTORY_FEATURES)
     return ColumnTransformer(
         [
-            ("num", StandardScaler(), NUMERIC_FEATURES),
+            ("num", StandardScaler(), numeric_features),
             (
                 "cat",
                 OneHotEncoder(handle_unknown="ignore", sparse_output=False),
@@ -55,7 +63,7 @@ class RidgeOrdinalEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _tabular_preprocessor()
+        self.prep_ = _tabular_preprocessor(include_history=_has_history_features(X))
         Xt = self.prep_.fit_transform(X)
         self.model_ = Ridge(alpha=self.alpha)
         self.model_.fit(Xt, y)
@@ -75,7 +83,7 @@ class OrderedLogisticEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _tabular_preprocessor()
+        self.prep_ = _tabular_preprocessor(include_history=_has_history_features(X))
         Xt = self.prep_.fit_transform(X)
         self.model_ = mord.LogisticAT(alpha=self.alpha)
         self.model_.fit(Xt, y)
@@ -166,27 +174,6 @@ def build_catboost_ordinal(
     )
 
 
-def build_catboost_history(
-    iterations=300,
-    depth=6,
-    learning_rate=0.05,
-    l2_leaf_reg=3.0,
-    loss_mode="rmse",
-    **kwargs,
-):
-    del kwargs
-    return CatBoostOrdinalWrapper(
-        _make_catboost_model(
-            loss_mode=loss_mode,
-            iterations=iterations,
-            depth=depth,
-            learning_rate=learning_rate,
-            l2_leaf_reg=l2_leaf_reg,
-        ),
-        loss_mode=loss_mode,
-    )
-
-
 def _make_catboost_regressor(
     iterations=300,
     depth=6,
@@ -223,27 +210,6 @@ def _make_catboost_classifier(
         verbose=0,
         train_dir=None,
     )
-
-
-def _make_catboost_model(
-    loss_mode="rmse",
-    iterations=300,
-    depth=6,
-    learning_rate=0.05,
-    l2_leaf_reg=3.0,
-):
-    common = {
-        "iterations": iterations,
-        "depth": depth,
-        "learning_rate": learning_rate,
-        "l2_leaf_reg": l2_leaf_reg,
-        "random_state": RANDOM_STATE,
-        "verbose": 0,
-        "train_dir": None,
-    }
-    if loss_mode == "multiclass":
-        return CatBoostClassifier(loss_function="MultiClass", **common)
-    return CatBoostRegressor(loss_function="RMSE", **common)
 
 
 def build_mixed_effects(maxiter=400, **kwargs):
@@ -376,6 +342,12 @@ class MixedEffectsOrdinalModel(BaseEstimator, ClassifierMixin):
                 exog[col] = X["phase"].astype(str).map(PHASE_TO_IDX).fillna(0).astype(float)
             else:
                 exog[col] = pd.to_numeric(X[col], errors="coerce").astype(float)
+        history_cols = [col for col in HISTORY_FEATURES if col in X.columns]
+        if history_cols:
+            exog = pd.concat(
+                [exog, X[history_cols].apply(pd.to_numeric, errors="coerce").astype(float)],
+                axis=1,
+            )
         return exog.reset_index(drop=True)
 
     def _continuous_columns(self, columns):

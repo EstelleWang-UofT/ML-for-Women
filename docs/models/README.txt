@@ -3,7 +3,7 @@ Fatigue Modeling — Documentation
 
 Shared pipeline context for all models. Per-model details:
   baselines.txt      — persistence and naive baselines
-  ordinal.txt        — ordinal regression, ordinal classification, and history/hybrid models
+  ordinal.txt        — ordinal regression and ordinal classification models
 
 Implementations live under src/modeling/.
 
@@ -18,7 +18,8 @@ Ordinal models (task='ordinal'):
   Families:
     - Ordinal regression: linear_regression, ordinal_rf, catboost_regressor
     - Ordinal classification: ordered_logistic, ordinal_forest, mixed_effects, catboost_ordinal
-    - History: catboost_history, catboost_residual_expanding
+
+History ablation: re-run any tabular model with feature_set='history' (17 daily + 7 history columns; fixed ewma_alpha=0.3, rolling_window=3).
 
 
 DATA
@@ -61,9 +62,9 @@ History features (HISTORY_FEATURES — past days only, per participant wave;
   activity_logsum_roll3_mean (rolling mean of prior log1p lightly + log1p moderately + log1p very),
   calories_sum_roll3_mean, very_roll3_mean, fatigue_delta_lag1
 
-Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (defaults; tuned for catboost_history),
+Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (fixed defaults for history ablation),
   EWMA_ALPHA_RANGE=(0.1, 0.5), ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
-  STABILITY_SEEDS=[42..51], PRIOR_COL="__prior__"
+  PRIOR_COL="__prior__"
 
 
 TRAIN / TEST SPLIT

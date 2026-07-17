@@ -1,38 +1,50 @@
-"""Smoke test for catboost history tuning changes."""
+"""Smoke test for history feature ablation (feature_set='history')."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from modeling.config import DATA_PATH
-from modeling.data import build_history_tree_matrices, load_fatigue_data, prepare_splits
-from modeling.models.ordinal import build_catboost_history
-from modeling.registry import HISTORY_ORDINAL_MODELS
+from modeling.config import DATA_PATH, HISTORY_FEATURES, NUMERIC_FEATURES, CATEGORICAL_FEATURES
+from modeling.data import (
+    history_feature_matrices,
+    load_fatigue_data,
+    prepare_splits,
+)
+from modeling.registry import ORDINAL_MODELS
 from modeling.runner import tune_and_benchmark_model
-from modeling.validation import run_stability_study, summarize_stability
 
 df = load_fatigue_data(DATA_PATH)
-bundle = prepare_splits(df, ewma_alpha=0.25, rolling_window=5)
-X_tv, X_te = build_history_tree_matrices(df, bundle.train_val_mask, bundle.test_mask, 0.25, 5)
-assert X_tv.shape[1] == X_te.shape[1]
-print("history matrices", X_tv.shape)
+bundle = prepare_splits(df)
+X_tv_raw, X_te_raw, X_tv_tree, X_te_tree = history_feature_matrices(bundle)
 
-m = build_catboost_history(iterations=10, depth=4, loss_mode="multiclass")
-m.fit(X_tv.iloc[:200], bundle.y_ord_train_val.iloc[:200])
-print("multiclass preds sample", m.predict(X_te.iloc[:50])[:5])
-
-m2 = build_catboost_history(iterations=10, depth=4, loss_mode="rmse")
-m2.fit(X_tv.iloc[:200], bundle.y_ord_train_val.iloc[:200])
-print("rmse preds sample", m2.predict(X_te.iloc[:50])[:5])
+expected_raw_cols = len(NUMERIC_FEATURES) + len(CATEGORICAL_FEATURES) + len(HISTORY_FEATURES)
+assert X_tv_raw.shape[1] == expected_raw_cols
+assert X_te_raw.shape[1] == expected_raw_cols
+assert X_tv_tree.shape[0] == len(bundle.y_ord_train_val)
+print("history raw cols", X_tv_raw.shape[1], "tree cols", X_tv_tree.shape[1])
 
 result, params = tune_and_benchmark_model(
-    "catboost_history", bundle, HISTORY_ORDINAL_MODELS, n_trials=2, n_splits=3
+    "catboost_regressor",
+    bundle,
+    ORDINAL_MODELS,
+    feature_set="history",
+    display_name="catboost_regressor_history",
+    n_trials=2,
+    n_splits=3,
 )
-print("tune keys", sorted(params.keys()))
-print("test_mae", result["test_metrics"]["mae"])
-print("history_params", result.get("history_params"))
+print("catboost_regressor_history test_mae", result["test_metrics"]["mae"])
+print("params keys", sorted(params.keys()))
+assert result["name"] == "catboost_regressor_history"
+assert result["feature_set"] == "history"
 
-stab = run_stability_study(df, seeds=[42, 43], n_trials=2, n_splits=3)
-print("stability rows", len(stab))
-print(summarize_stability(stab))
+result_lr, _ = tune_and_benchmark_model(
+    "linear_regression",
+    bundle,
+    ORDINAL_MODELS,
+    feature_set="history",
+    display_name="linear_regression_history",
+    n_trials=2,
+    n_splits=3,
+)
+print("linear_regression_history test_mae", result_lr["test_metrics"]["mae"])
 print("OK")

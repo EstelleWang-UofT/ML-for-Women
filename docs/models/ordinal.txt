@@ -87,22 +87,10 @@ Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
 Limitations: MultiClass loss is nominal; order respected at prediction time via expected value.
 
 
-HISTORY / HYBRID ORDINAL MODELS
--------------------------------
+HISTORY FEATURE ABLATION
+------------------------
 
-### catboost_history
-
-Task: Ordinal regression (fatigue_num 0–5)
-Purpose: CatBoost on same-day features plus seven leakage-safe history columns.
-Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}; loss_mode {rmse, multiclass}.
-Prediction: RMSE mode — continuous output clipped to [0, 5]. Multiclass mode — expected value E[y] over classes 0–5, then clip.
-Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-
-
-### catboost_residual_expanding
-
-Task: Ordinal regression (fatigue_num 0–5) — hybrid / residual model
-Purpose: Predict deviation from expanding-mean persistence baseline, then add baseline back.
-Optuna: CatBoost iterations [100, 500], depth [4, 10], learning_rate log-uniform [0.01, 0.3], l2_leaf_reg [1.0, 10.0]; history ewma_alpha [0.1, 0.5], rolling_window {2, 3, 5, 7}. RMSE on residual only.
-Prediction: clip(round(expanding_mean_prior + CatBoost_residual), 0, 5).
-Evaluation: CV MAE on final ordinal prediction. Test MAE, RMSE, R2, QWK.
+Any tabular model above can be re-run with feature_set='history' via tune_and_benchmark_model.
+This appends seven leakage-safe history columns to the daily feature matrix (see README.txt HISTORY_FEATURES).
+History EWMA alpha and rolling window are fixed at prepare_splits defaults (0.3 and 3); first-day NaNs are imputed with the train/val median.
+Notebook cells use a _history suffix (e.g. catboost_regressor_history) for side-by-side comparison with tabular runs.

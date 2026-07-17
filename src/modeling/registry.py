@@ -1,10 +1,8 @@
 """Model registry and Optuna search spaces."""
 
-from modeling.config import EWMA_ALPHA_RANGE, ROLLING_WINDOW_CHOICES
-from modeling.models.hybrid import build_catboost_residual_expanding
+from modeling.data import history_feature_matrices
 from modeling.models.ordinal import (
     attach_groups,
-    build_catboost_history,
     build_catboost_ordinal,
     build_catboost_regressor,
     build_linear_regression,
@@ -24,15 +22,6 @@ ORDINAL_MODELS = {
     "catboost_ordinal": build_catboost_ordinal,
 }
 
-HISTORY_ORDINAL_MODELS = {
-    "catboost_history": build_catboost_history,
-    "catboost_residual_expanding": build_catboost_residual_expanding,
-}
-
-RESIDUAL_ORDINAL_MODELS = {
-    "catboost_residual_expanding": build_catboost_residual_expanding,
-}
-
 MIXED_EFFECTS_MODELS = {"mixed_effects"}
 TREE_ORDINAL_MODELS = {
     "ordinal_rf",
@@ -41,10 +30,6 @@ TREE_ORDINAL_MODELS = {
     "catboost_ordinal",
 }
 PIPELINE_ORDINAL_MODELS = {"linear_regression", "ordered_logistic"}
-HISTORY_TREE_ORDINAL_MODELS = {"catboost_history"}
-RESIDUAL_TREE_ORDINAL_MODELS = {"catboost_residual_expanding"}
-
-TUNING_ONLY_PARAM_KEYS = frozenset({"ewma_alpha", "rolling_window"})
 
 
 def _catboost_search_space(trial):
@@ -56,94 +41,55 @@ def _catboost_search_space(trial):
     }
 
 
-def _catboost_history_search_space(trial):
-    return {
-        **_catboost_search_space(trial),
-        "ewma_alpha": trial.suggest_float(
-            "ewma_alpha", EWMA_ALPHA_RANGE[0], EWMA_ALPHA_RANGE[1]
-        ),
-        "rolling_window": trial.suggest_categorical("rolling_window", ROLLING_WINDOW_CHOICES),
-        "loss_mode": trial.suggest_categorical("loss_mode", ["rmse", "multiclass"]),
-    }
-
-
-def _catboost_residual_search_space(trial):
-    return {
-        **_catboost_search_space(trial),
-        "ewma_alpha": trial.suggest_float(
-            "ewma_alpha", EWMA_ALPHA_RANGE[0], EWMA_ALPHA_RANGE[1]
-        ),
-        "rolling_window": trial.suggest_categorical("rolling_window", ROLLING_WINDOW_CHOICES),
-    }
-
-
-def is_history_tree_model(name, task="ordinal"):
-    del task
-    return name in HISTORY_TREE_ORDINAL_MODELS
-
-
-def is_residual_tree_model(name, task="ordinal"):
-    del task
-    return name in RESIDUAL_TREE_ORDINAL_MODELS
-
-
-def resolve_training_data(name, bundle, task="ordinal"):
+def resolve_training_data(name, bundle, feature_set="tabular"):
     """Return kwargs for tune_model / run_model_benchmark for a given model."""
-    del task
     y_train_val = bundle.y_ord_train_val
     y_test = bundle.y_ord_test
+    groups = bundle.groups_train_val
+
+    if feature_set == "history":
+        X_train_val_raw, X_test_raw, X_train_val_tree, X_test_tree = history_feature_matrices(
+            bundle
+        )
+    else:
+        X_train_val_raw = bundle.X_train_val
+        X_test_raw = bundle.X_test
+        X_train_val_tree = bundle.X_train_val_tree
+        X_test_tree = bundle.X_test_tree
 
     if name in MIXED_EFFECTS_MODELS:
         return {
-            "X_train_val": attach_groups(bundle.X_train_val, bundle.groups_train_val),
-            "X_test": attach_groups(bundle.X_test, bundle.groups_test),
+            "X_train_val": attach_groups(X_train_val_raw, groups),
+            "X_test": attach_groups(X_test_raw, bundle.groups_test),
             "y_train_val": y_train_val,
             "y_test": y_test,
-            "groups": bundle.groups_train_val,
-        }
-
-    if name in RESIDUAL_TREE_ORDINAL_MODELS:
-        return {
-            "y_train_val": y_train_val,
-            "y_test": y_test,
-            "groups": bundle.groups_train_val,
-            "bundle": bundle,
-        }
-
-    if name in HISTORY_TREE_ORDINAL_MODELS:
-        return {
-            "X_train_val": bundle.X_train_val_history_tree,
-            "X_test": bundle.X_test_history_tree,
-            "y_train_val": y_train_val,
-            "y_test": y_test,
-            "groups": bundle.groups_train_val,
-            "bundle": bundle,
+            "groups": groups,
         }
 
     if name in TREE_ORDINAL_MODELS:
         return {
-            "X_train_val": bundle.X_train_val_tree,
-            "X_test": bundle.X_test_tree,
+            "X_train_val": X_train_val_tree,
+            "X_test": X_test_tree,
             "y_train_val": y_train_val,
             "y_test": y_test,
-            "groups": bundle.groups_train_val,
+            "groups": groups,
         }
 
     if name in PIPELINE_ORDINAL_MODELS:
         return {
-            "X_train_val": bundle.X_train_val,
-            "X_test": bundle.X_test,
+            "X_train_val": X_train_val_raw,
+            "X_test": X_test_raw,
             "y_train_val": y_train_val,
             "y_test": y_test,
-            "groups": bundle.groups_train_val,
+            "groups": groups,
         }
 
     return {
-        "X_train_val": bundle.X_train_val,
-        "X_test": bundle.X_test,
+        "X_train_val": X_train_val_raw,
+        "X_test": X_test_raw,
         "y_train_val": y_train_val,
         "y_test": y_test,
-        "groups": bundle.groups_train_val,
+        "groups": groups,
     }
 
 
@@ -168,8 +114,6 @@ def get_search_space(name, task="ordinal"):
         },
         "catboost_regressor": _catboost_search_space,
         "catboost_ordinal": _catboost_search_space,
-        "catboost_history": _catboost_history_search_space,
-        "catboost_residual_expanding": _catboost_residual_search_space,
         "mixed_effects": lambda trial: {
             "maxiter": trial.suggest_int("maxiter", 200, 800),
         },
@@ -181,9 +125,8 @@ def get_search_space(name, task="ordinal"):
 
 def make_model_factory(name, params, registry):
     builder = registry[name]
-    model_params = {k: v for k, v in params.items() if k not in TUNING_ONLY_PARAM_KEYS}
 
     def factory():
-        return builder(**model_params)
+        return builder(**params)
 
     return factory

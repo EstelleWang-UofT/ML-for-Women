@@ -302,41 +302,37 @@ def build_history_tree_matrices(
     )
 
 
+def impute_history_features(
+    X_train_val,
+    X_test,
+    history_cols=HISTORY_FEATURES,
+):
+    """Fill history-column NaNs using train_val medians only."""
+    X_tv = X_train_val.copy()
+    X_te = X_test.copy()
+    present = [col for col in history_cols if col in X_tv.columns]
+    if not present:
+        return X_tv, X_te
+    medians = X_tv[present].median(numeric_only=True)
+    for col in present:
+        X_tv[col] = X_tv[col].fillna(medians[col])
+        X_te[col] = X_te[col].fillna(medians[col])
+    return X_tv, X_te
+
+
+def history_feature_matrices(bundle):
+    """Return imputed raw and tree history matrices for train/val and test."""
+    X_tv, X_te = impute_history_features(
+        bundle.X_train_val_history,
+        bundle.X_test_history,
+    )
+    return X_tv, X_te, build_tree_matrix(X_tv), build_tree_matrix(X_te)
+
+
 def attach_prior_frame(X, prior_series, col=PRIOR_COL):
     out = X.copy()
     out[col] = prior_series.values if hasattr(prior_series, "values") else prior_series
     return out
-
-
-def build_hybrid_residual_matrix(X_history, prior_series, prior_col=PRIOR_COL):
-    """Tree matrix for hybrid models: drop expanding mean from X, attach prior column."""
-    out = X_history.drop(columns=["fatigue_expanding_mean"], errors="ignore")
-    out_tree = build_tree_matrix(out)
-    return attach_prior_frame(out_tree, prior_series, col=prior_col)
-
-
-def build_hybrid_tree_matrices(
-    df,
-    train_val_mask,
-    test_mask,
-    ewma_alpha=None,
-    rolling_window=None,
-    prior_series=None,
-):
-    """Build tree-encoded hybrid feature matrices for train/val and test splits."""
-    X_all_history = make_feature_matrix_with_history(
-        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
-    )
-    if prior_series is None:
-        prior_series = compute_expanding_mean_prior(df)
-    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
-    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
-    y_prior_train_val = prior_series.loc[train_val_mask].reset_index(drop=True)
-    y_prior_test = prior_series.loc[test_mask].reset_index(drop=True)
-    return (
-        build_hybrid_residual_matrix(X_train_val_history, y_prior_train_val),
-        build_hybrid_residual_matrix(X_test_history, y_prior_test),
-    )
 
 
 def prepare_splits(
