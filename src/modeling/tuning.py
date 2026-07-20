@@ -7,7 +7,7 @@ import optuna
 from modeling.config import N_CV_FOLDS, OPTUNA_TRIALS, ORDINAL_METRIC
 from modeling.cv import run_group_cv
 from modeling.models.ordinal import attach_groups
-from modeling.registry import MIXED_EFFECTS_MODELS, make_model_factory
+from modeling.registry import POPULATION_ORDINAL_MODELS, make_model_factory
 
 
 def _run_group_cv(factory, X, y, groups, n_splits, test_ids):
@@ -41,12 +41,12 @@ def tune_model(
     bundle=None,
 ):
     del task, bundle
-    use_mixed = name in MIXED_EFFECTS_MODELS
+    use_population = name in POPULATION_ORDINAL_MODELS
 
     if X_train_val is None:
         raise ValueError("X_train_val is required.")
 
-    if use_mixed:
+    if use_population:
         X_train_val = attach_groups(X_train_val, groups)
 
     def objective(trial):

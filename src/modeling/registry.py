@@ -6,7 +6,7 @@ from modeling.models.ordinal import (
     build_catboost_ordinal,
     build_catboost_regressor,
     build_linear_regression,
-    build_mixed_effects,
+    build_population_ordered_logistic,
     build_ordered_logistic,
     build_ordinal_forest,
     build_ordinal_rf,
@@ -18,11 +18,11 @@ ORDINAL_MODELS = {
     "catboost_regressor": build_catboost_regressor,
     "ordered_logistic": build_ordered_logistic,
     "ordinal_forest": build_ordinal_forest,
-    "mixed_effects": build_mixed_effects,
+    "population_ordered_logistic": build_population_ordered_logistic,
     "catboost_ordinal": build_catboost_ordinal,
 }
 
-MIXED_EFFECTS_MODELS = {"mixed_effects"}
+POPULATION_ORDINAL_MODELS = {"population_ordered_logistic"}
 TREE_ORDINAL_MODELS = {
     "ordinal_rf",
     "catboost_regressor",
@@ -57,7 +57,7 @@ def resolve_training_data(name, bundle, feature_set="tabular"):
         X_train_val_tree = bundle.X_train_val_tree
         X_test_tree = bundle.X_test_tree
 
-    if name in MIXED_EFFECTS_MODELS:
+    if name in POPULATION_ORDINAL_MODELS:
         return {
             "X_train_val": attach_groups(X_train_val_raw, groups),
             "X_test": attach_groups(X_test_raw, bundle.groups_test),
@@ -114,7 +114,7 @@ def get_search_space(name, task="ordinal"):
         },
         "catboost_regressor": _catboost_search_space,
         "catboost_ordinal": _catboost_search_space,
-        "mixed_effects": lambda trial: {
+        "population_ordered_logistic": lambda trial: {
             "maxiter": trial.suggest_int("maxiter", 200, 800),
         },
     }

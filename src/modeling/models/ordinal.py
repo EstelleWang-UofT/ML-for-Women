@@ -212,9 +212,9 @@ def _make_catboost_classifier(
     )
 
 
-def build_mixed_effects(maxiter=400, **kwargs):
+def build_population_ordered_logistic(maxiter=400, **kwargs):
     del kwargs
-    return MixedEffectsOrdinalWrapper(maxiter=maxiter)
+    return PopulationOrderedLogisticWrapper(maxiter=maxiter)
 
 
 class OrdinalRegressorWrapper(BaseEstimator):
@@ -314,8 +314,8 @@ class CatBoostOrdinalWrapper(BaseEstimator):
         return clip_ordinal_predictions(preds)
 
 
-class MixedEffectsOrdinalModel(BaseEstimator, ClassifierMixin):
-    """Population ordinal model on day-varying features (generalizes to held-out participants)."""
+class PopulationOrderedLogisticModel(BaseEstimator, ClassifierMixin):
+    """Population-level ordered logistic on day-varying features (statsmodels OrderedModel)."""
 
     def __init__(self, maxiter=400):
         self.maxiter = maxiter
@@ -390,14 +390,14 @@ class MixedEffectsOrdinalModel(BaseEstimator, ClassifierMixin):
                     self.fit_method_ = method
                     return result
         if last_result is None:
-            raise RuntimeError("MixedEffectsOrdinalModel failed for all fit methods.")
+            raise RuntimeError("PopulationOrderedLogisticModel failed for all fit methods.")
         self.converged_ = bool(last_result.mle_retvals.get("converged", False))
         self.fit_method_ = "fallback"
         return last_result
 
     def fit(self, X, y, groups=None):
         if groups is None:
-            raise ValueError("MixedEffectsOrdinalModel requires participant groups.")
+            raise ValueError("PopulationOrderedLogisticModel requires participant groups.")
         exog_raw = self._build_exog_raw(X, groups=groups)
         exog = self._prepare_exog(exog_raw, fit=True)
         endog = pd.Series(y).astype(int).reset_index(drop=True)
@@ -408,9 +408,9 @@ class MixedEffectsOrdinalModel(BaseEstimator, ClassifierMixin):
 
     def predict(self, X, groups=None):
         if groups is None:
-            raise ValueError("MixedEffectsOrdinalModel requires participant groups on predict.")
+            raise ValueError("PopulationOrderedLogisticModel requires participant groups on predict.")
         if self.feature_columns_ is None or self.result_ is None:
-            raise ValueError("MixedEffectsOrdinalModel has not been fitted yet.")
+            raise ValueError("PopulationOrderedLogisticModel has not been fitted yet.")
 
         exog_raw = self._build_exog_raw(X, groups=groups)
         exog = self._prepare_exog(exog_raw, fit=False)
@@ -423,12 +423,12 @@ class MixedEffectsOrdinalModel(BaseEstimator, ClassifierMixin):
         return probs.argmax(axis=1).astype(int)
 
 
-class MixedEffectsOrdinalWrapper(BaseEstimator):
+class PopulationOrderedLogisticWrapper(BaseEstimator):
     """Sklearn wrapper that carries groups alongside tabular features."""
 
     def __init__(self, maxiter=400):
         self.maxiter = maxiter
-        self.model_ = MixedEffectsOrdinalModel(maxiter=maxiter)
+        self.model_ = PopulationOrderedLogisticModel(maxiter=maxiter)
 
     def fit(self, X, y):
         if not isinstance(X, pd.DataFrame):

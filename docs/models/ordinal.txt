@@ -67,14 +67,14 @@ Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
 Limitations: Five binary models per fit; threshold probabilities enforced monotonic at predict time.
 
 
-### mixed_effects
+### population_ordered_logistic
 
 Task: Ordinal classification (fatigue_num 0–5)
-Purpose: Population-level ordered logistic model on day-varying covariates (not a true mixed-effects model).
+Purpose: Population-level ordered logistic regression (statsmodels OrderedModel) on day-varying covariates only; excludes static demographics (age, literacy, etc.) so coefficients reflect signals that vary day-to-day.
 Optuna: maxiter [200, 800].
 Prediction: Argmax over class probabilities (integer 0–5).
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
-Limitations: Misleading registry name — no random effects for participants. Ignores static demographics. Convergence not guaranteed.
+Limitations: Not a mixed-effects model — no participant random intercepts or slopes. Distinct from full-feature ordered_logistic (mord). Convergence not guaranteed.
 
 
 ### catboost_ordinal

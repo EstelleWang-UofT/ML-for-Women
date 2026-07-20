@@ -17,7 +17,7 @@ Ordinal models (task='ordinal'):
   Additional metrics: RMSE, R2, quadratic weighted Cohen's kappa (QWK)
   Families:
     - Ordinal regression: linear_regression, ordinal_rf, catboost_regressor
-    - Ordinal classification: ordered_logistic, ordinal_forest, mixed_effects, catboost_ordinal
+    - Ordinal classification: ordered_logistic, ordinal_forest, population_ordered_logistic, catboost_ordinal
 
 History ablation: re-run any tabular model with feature_set='history' (17 daily + 7 history columns; fixed ewma_alpha=0.3, rolling_window=3).
 
