@@ -26,7 +26,7 @@ Notebooks live under `notebooks/`:
 Implementation package: [`src/modeling/`](src/modeling/)
 
 - Load/split: `modeling.data.load_fatigue_data`, `prepare_splits`
-- Models: 7 tabular ordinal models + 2 history models (see `docs/models/`)
+- Models: 7 ordinal models with optional history feature ablation (see `docs/models/`)
 - Tuning: Optuna via `modeling.runner.tune_and_benchmark_model`
 
 Run the modeling notebook with the project root on `PYTHONPATH` or use the `%pip` / `sys.path` setup in the notebook (adds `../../src`).

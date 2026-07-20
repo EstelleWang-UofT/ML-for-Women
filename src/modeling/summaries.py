@@ -41,7 +41,7 @@ def collect_summaries(results):
 
 
 def build_history_ablation_summary(test_summary, model_names):
-    """Compare tabular vs history test MAE for each base model name.
+    """Compare base vs history test MAE for each base model name.
 
     Expects ``test_summary`` indexed by model name with a ``test_mae`` column
     and companion rows named ``{base}_history`` for each base in
@@ -52,14 +52,14 @@ def build_history_ablation_summary(test_summary, model_names):
         hist = f"{base}_history"
         if base not in test_summary.index or hist not in test_summary.index:
             continue
-        tabular_mae = test_summary.loc[base, "test_mae"]
+        base_mae = test_summary.loc[base, "test_mae"]
         history_mae = test_summary.loc[hist, "test_mae"]
         rows.append(
             {
                 "model": base,
-                "test_mae_tabular": tabular_mae,
+                "test_mae_base": base_mae,
                 "test_mae_history": history_mae,
-                "delta_mae": history_mae - tabular_mae,
+                "delta_mae": history_mae - base_mae,
             }
         )
     if not rows:

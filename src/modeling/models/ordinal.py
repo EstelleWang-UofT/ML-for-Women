@@ -1,4 +1,4 @@
-"""Tabular ordinal model builders."""
+"""Ordinal model builders."""
 
 import warnings
 
@@ -38,7 +38,7 @@ def _has_history_features(X):
     return all(col in X.columns for col in HISTORY_FEATURES)
 
 
-def _tabular_preprocessor(include_history=False):
+def _base_preprocessor(include_history=False):
     numeric_features = list(NUMERIC_FEATURES)
     if include_history:
         numeric_features = numeric_features + list(HISTORY_FEATURES)
@@ -55,7 +55,7 @@ def _tabular_preprocessor(include_history=False):
 
 
 class RidgeOrdinalEstimator(BaseEstimator):
-    """Ridge on scaled/OHE tabular features with clipped ordinal predictions."""
+    """Ridge on scaled/OHE daily features with clipped ordinal predictions."""
 
     def __init__(self, alpha=1.0):
         self.alpha = alpha
@@ -63,7 +63,7 @@ class RidgeOrdinalEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _tabular_preprocessor(include_history=_has_history_features(X))
+        self.prep_ = _base_preprocessor(include_history=_has_history_features(X))
         Xt = self.prep_.fit_transform(X)
         self.model_ = Ridge(alpha=self.alpha)
         self.model_.fit(Xt, y)
@@ -75,7 +75,7 @@ class RidgeOrdinalEstimator(BaseEstimator):
 
 
 class OrderedLogisticEstimator(BaseEstimator):
-    """mord all-threshold logistic on scaled/OHE tabular features."""
+    """mord all-threshold logistic on scaled/OHE daily features."""
 
     def __init__(self, alpha=1.0):
         self.alpha = alpha
@@ -83,7 +83,7 @@ class OrderedLogisticEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _tabular_preprocessor(include_history=_has_history_features(X))
+        self.prep_ = _base_preprocessor(include_history=_has_history_features(X))
         Xt = self.prep_.fit_transform(X)
         self.model_ = mord.LogisticAT(alpha=self.alpha)
         self.model_.fit(Xt, y)
@@ -424,7 +424,7 @@ class PopulationOrderedLogisticModel(BaseEstimator, ClassifierMixin):
 
 
 class PopulationOrderedLogisticWrapper(BaseEstimator):
-    """Sklearn wrapper that carries groups alongside tabular features."""
+    """Sklearn wrapper that carries groups alongside feature columns."""
 
     def __init__(self, maxiter=400):
         self.maxiter = maxiter

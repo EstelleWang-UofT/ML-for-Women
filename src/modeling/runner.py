@@ -10,7 +10,7 @@ def tune_and_benchmark_model(
     name,
     bundle,
     registry,
-    feature_set="tabular",
+    feature_set="base",
     display_name=None,
     n_trials=OPTUNA_TRIALS,
     n_splits=N_CV_FOLDS,

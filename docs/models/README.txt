@@ -18,7 +18,7 @@ Ordinal models predict fatigue_num (0–5) with MAE, RMSE, R2, and QWK.
     - Ordinal regression: linear_regression, ordinal_rf, catboost_regressor
     - Ordinal classification: ordered_logistic, ordinal_forest, population_ordered_logistic, catboost_ordinal
 
-History ablation: re-run any tabular model with feature_set='history' (17 daily + 7 history columns; fixed ewma_alpha=0.3, rolling_window=3).
+History ablation: re-run any base model with feature_set='history' (17 daily + 7 history columns; fixed ewma_alpha=0.3, rolling_window=3).
 
 
 DATA

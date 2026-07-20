@@ -41,8 +41,10 @@ def _catboost_search_space(trial):
     }
 
 
-def resolve_training_data(name, bundle, feature_set="tabular"):
+def resolve_training_data(name, bundle, feature_set="base"):
     """Return kwargs for tune_model / run_model_benchmark for a given model."""
+    if feature_set not in {"base", "history"}:
+        raise ValueError(f"Unsupported feature_set: {feature_set!r} (expected 'base' or 'history')")
     y_train_val = bundle.y_ord_train_val
     y_test = bundle.y_ord_test
     groups = bundle.groups_train_val

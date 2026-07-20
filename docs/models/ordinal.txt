@@ -90,7 +90,7 @@ Limitations: MultiClass loss is nominal; order respected at prediction time via 
 HISTORY FEATURE ABLATION
 ------------------------
 
-Any tabular model above can be re-run with feature_set='history' via tune_and_benchmark_model.
+Any base model above can be re-run with feature_set='history' via tune_and_benchmark_model.
 This appends seven leakage-safe history columns to the daily feature matrix (see README.txt HISTORY_FEATURES).
 History EWMA alpha and rolling window are fixed at prepare_splits defaults (0.3 and 3); first-day NaNs are imputed with the train/val median.
-Notebook cells use a _history suffix (e.g. catboost_regressor_history) for side-by-side comparison with tabular runs.
+Notebook cells use a _history suffix (e.g. catboost_regressor_history) for side-by-side comparison with base runs.
