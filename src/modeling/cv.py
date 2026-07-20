@@ -12,10 +12,8 @@ def run_group_cv(
     y,
     groups,
     n_splits=5,
-    task="ordinal",
     test_ids=None,
 ):
-    del task
     gkf = GroupKFold(n_splits=n_splits)
     fold_results = []
     test_id_set = set(test_ids or [])
@@ -62,9 +60,7 @@ def evaluate_on_test(
     y_train_val,
     X_test,
     y_test,
-    task="ordinal",
 ):
-    del task
     model = model_factory()
     model.fit(X_train_val, y_train_val)
     preds = model.predict(X_test)
@@ -79,11 +75,9 @@ def run_model_benchmark(
     y_test,
     X_train_val=None,
     X_test=None,
-    task="ordinal",
     n_splits=5,
     test_ids=None,
 ):
-    del task
     fold_df, cv_summary = run_group_cv(
         model_factory,
         X_train_val,

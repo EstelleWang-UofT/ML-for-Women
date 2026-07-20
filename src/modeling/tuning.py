@@ -33,14 +33,13 @@ def tune_model(
     search_space,
     y_train_val,
     groups,
-    task="ordinal",
     X_train_val=None,
     n_trials=OPTUNA_TRIALS,
     n_splits=N_CV_FOLDS,
     test_ids=None,
     bundle=None,
 ):
-    del task, bundle
+    del bundle
     use_population = name in POPULATION_ORDINAL_MODELS
 
     if X_train_val is None:

@@ -3,13 +3,14 @@
 import numpy as np
 from sklearn.metrics import cohen_kappa_score, mean_absolute_error, mean_squared_error, r2_score
 
+ORDINAL_METRIC_COLS = ["mae", "rmse", "r2", "qwk"]
+
 
 def clip_ordinal_predictions(preds, low=0, high=5):
     return np.clip(np.rint(preds), low, high).astype(int)
 
 
-def compute_metrics(y_true, y_pred, task="ordinal"):
-    del task
+def compute_metrics(y_true, y_pred):
     y_true = np.asarray(y_true)
     y_pred = clip_ordinal_predictions(y_pred)
     rmse = mean_squared_error(y_true, y_pred) ** 0.5

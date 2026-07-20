@@ -93,8 +93,7 @@ def resolve_training_data(name, bundle, feature_set="tabular"):
     }
 
 
-def get_search_space(name, task="ordinal"):
-    del task
+def get_search_space(name):
     spaces = {
         "linear_regression": lambda trial: {
             "alpha": trial.suggest_float("alpha", 1e-3, 10.0, log=True),

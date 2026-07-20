@@ -16,6 +16,7 @@ from modeling.metrics import compute_metrics
 from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
 from modeling.registry import ORDINAL_MODELS, get_search_space
 from modeling.runner import tune_and_benchmark_model
+from modeling.summaries import build_history_ablation_summary, collect_summaries
 from modeling.tuning import tune_model
 
 __all__ = [
@@ -28,6 +29,8 @@ __all__ = [
     "ORDINAL_MODELS",
     "RANDOM_STATE",
     "TEST_SIZE",
+    "build_history_ablation_summary",
+    "collect_summaries",
     "compute_metrics",
     "evaluate_on_test",
     "get_search_space",

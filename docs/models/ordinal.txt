@@ -1,7 +1,7 @@
 Fatigue Modeling — Ordinal Models
 ===================================
 
-All models target fatigue_num (0–5) and are evaluated with task='ordinal' (MAE, RMSE, R2, QWK).
+All models target fatigue_num (0–5) and are evaluated with MAE, RMSE, R2, and QWK.
 Refresh metrics after re-running fatigue_modeling.ipynb.
 
 

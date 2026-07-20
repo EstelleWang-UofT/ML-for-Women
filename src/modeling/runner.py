@@ -10,7 +10,6 @@ def tune_and_benchmark_model(
     name,
     bundle,
     registry,
-    task="ordinal",
     feature_set="tabular",
     display_name=None,
     n_trials=OPTUNA_TRIALS,
@@ -30,8 +29,7 @@ def tune_and_benchmark_model(
         params, cv_score = tune_model(
             name=name,
             registry=registry,
-            search_space=get_search_space(name, task=task),
-            task=task,
+            search_space=get_search_space(name),
             n_trials=n_trials,
             n_splits=n_splits,
             test_ids=bundle.test_ids,
@@ -44,7 +42,6 @@ def tune_and_benchmark_model(
     result = run_model_benchmark(
         name=display_name or name,
         model_factory=factory,
-        task=task,
         n_splits=n_splits,
         test_ids=bundle.test_ids,
         y_train_val=data_kwargs["y_train_val"],

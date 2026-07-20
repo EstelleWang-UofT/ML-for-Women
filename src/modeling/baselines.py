@@ -6,9 +6,7 @@ from sklearn.base import BaseEstimator
 
 from modeling.config import N_CV_FOLDS
 from modeling.data import attach_prior_frame
-from modeling.metrics import clip_ordinal_predictions
-
-ORDINAL_METRIC_COLS = ["mae", "rmse", "r2", "qwk"]
+from modeling.metrics import ORDINAL_METRIC_COLS, clip_ordinal_predictions
 
 
 class GlobalMeanBaseline(BaseEstimator):
@@ -95,8 +93,7 @@ ORDINAL_BASELINES = {
 }
 
 
-def summarize_baseline_metrics(results, task="ordinal"):
-    del task
+def summarize_baseline_metrics(results):
     rows = []
     for result in results:
         row = {"model": result["name"]}
@@ -132,9 +129,8 @@ def _run_persistence_baseline(name, builder, bundle, n_splits):
     )
 
 
-def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_FOLDS):
+def run_baseline_benchmark(name, builder, bundle, n_splits=N_CV_FOLDS):
     """Evaluate one baseline with the same CV / test protocol as tuned models."""
-    del task
     from modeling.cv import run_model_benchmark
 
     factory = builder
@@ -155,8 +151,7 @@ def run_baseline_benchmark(name, builder, bundle, task="ordinal", n_splits=N_CV_
     )
 
 
-def run_all_baseline_benchmarks(bundle, task="ordinal", n_splits=N_CV_FOLDS):
-    del task
+def run_all_baseline_benchmarks(bundle, n_splits=N_CV_FOLDS):
     results = []
     for name, builder in ORDINAL_BASELINES.items():
         result = run_baseline_benchmark(name, builder, bundle, n_splits=n_splits)

@@ -11,8 +11,7 @@ Implementations live under src/modeling/.
 TASKS
 -----
 
-Ordinal models (task='ordinal'):
-  Target: fatigue_num (integer 0–5)
+Ordinal models predict fatigue_num (0–5) with MAE, RMSE, R2, and QWK.
   Primary metric: MAE (mean absolute error)
   Additional metrics: RMSE, R2, quadratic weighted Cohen's kappa (QWK)
   Families:
