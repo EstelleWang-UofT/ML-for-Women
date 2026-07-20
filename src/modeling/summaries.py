@@ -2,7 +2,11 @@
 
 import pandas as pd
 
+from modeling.baselines import ORDINAL_BASELINES
 from modeling.metrics import ORDINAL_METRIC_COLS
+from modeling.registry import ORDINAL_MODELS
+
+CATEGORY_ORDER = ("baseline", "base", "history")
 
 
 def collect_summaries(results):
@@ -38,6 +42,31 @@ def collect_summaries(results):
         pd.DataFrame(cv_rows).set_index("model"),
         pd.DataFrame(test_rows).set_index("model"),
     )
+
+
+def model_category(name: str) -> str:
+    """Classify a benchmark result name into baseline, base, or history."""
+    if name in ORDINAL_BASELINES:
+        return "baseline"
+    if name.endswith("_history"):
+        return "history"
+    if name in ORDINAL_MODELS:
+        return "base"
+    raise ValueError(f"Unknown model category for {name!r}")
+
+
+def collect_categorized_summaries(results):
+    """Build per-category CV and test tables sorted by cv_mae and test_mae."""
+    cv_summary, test_summary = collect_summaries(results)
+    categorized = {}
+    for category in CATEGORY_ORDER:
+        cv_cat = cv_summary[cv_summary.index.map(lambda n: model_category(n) == category)]
+        test_cat = test_summary[test_summary.index.map(lambda n: model_category(n) == category)]
+        categorized[category] = (
+            cv_cat.sort_values("cv_mae"),
+            test_cat.sort_values("test_mae"),
+        )
+    return categorized
 
 
 def build_history_ablation_summary(test_summary, model_names):
