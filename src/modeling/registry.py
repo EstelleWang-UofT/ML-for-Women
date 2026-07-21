@@ -75,7 +75,7 @@ def _catboost_search_space(trial):
 
 def _gee_search_space(trial):
     return {
-        "maxiter": trial.suggest_int("maxiter", 40, 120),
+        "maxiter": trial.suggest_int("maxiter", 40, 100),
     }
 
 

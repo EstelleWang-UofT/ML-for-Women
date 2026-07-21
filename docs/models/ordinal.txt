@@ -45,7 +45,7 @@ Limitations: RMSE loss does not enforce ordinal class structure.
 
 Task: Ordinal regression (fatigue_num 0–5)
 Purpose: Gaussian GEE with autoregressive working correlation, clustered by participant-interval (id × study_interval); includes study_interval covariate and all 17 base daily features. Rows sorted by day_in_study within each cluster before fit.
-Optuna: maxiter [40, 120] (10 trials via GEE_OPTUNA_TRIALS).
+Optuna: maxiter [40, 100] (10 trials via GEE_OPTUNA_TRIALS).
 Prediction: Continuous GEE mean clipped to [0, 5].
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
 Limitations: Treats ordinal target as continuous Gaussian outcome; autoregressive correlation assumes ordered daily observations within each ~90-day interval.
@@ -101,7 +101,7 @@ Limitations: MultiClass loss is nominal; order respected at prediction time via 
 
 Task: Ordinal classification (fatigue_num 0–5)
 Purpose: Cumulative-threshold Binomial GEE with autoregressive working correlation (statsmodels GEE), clustered by participant-interval (id × study_interval); uses all 17 base daily features only (no study_interval covariate — wave is captured by clustering). Rows sorted by day_in_study within each cluster before fit. Uses five P(y > k) models because OrdinalGEE does not support Autoregressive on this data.
-Optuna: maxiter [40, 120] (10 trials via GEE_OPTUNA_TRIALS).
+Optuna: maxiter [40, 100] (10 trials via GEE_OPTUNA_TRIALS).
 Prediction: OrdinalGEE class prediction clipped to [0, 5].
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.
 Limitations: Five binary GEE fits per benchmark; Autoregressive used where numerically stable, otherwise Exchangeable fallback for a threshold. Threshold probabilities enforced monotonic at predict time.
