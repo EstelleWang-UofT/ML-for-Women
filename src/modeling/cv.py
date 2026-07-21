@@ -64,7 +64,15 @@ def evaluate_on_test(
     model = model_factory()
     model.fit(X_train_val, y_train_val)
     preds = model.predict(X_test)
-    return compute_metrics(y_test, preds)
+    return compute_metrics(y_test, preds), model
+
+
+def _extract_model_summary(model):
+    summary = getattr(model, "summary_", None)
+    if summary is not None:
+        return summary
+    inner = getattr(model, "model_", None)
+    return getattr(inner, "summary_", None)
 
 
 def run_model_benchmark(
@@ -86,7 +94,7 @@ def run_model_benchmark(
         n_splits=n_splits,
         test_ids=test_ids,
     )
-    test_metrics = evaluate_on_test(
+    test_metrics, final_model = evaluate_on_test(
         model_factory,
         X_train_val,
         y_train_val,
@@ -94,10 +102,14 @@ def run_model_benchmark(
         y_test,
     )
 
-    return {
+    result = {
         "status": "ok",
         "name": name,
         "fold_df": fold_df,
         "cv_summary": cv_summary,
         "test_metrics": test_metrics,
     }
+    summary = _extract_model_summary(final_model)
+    if summary is not None:
+        result["summary"] = summary
+    return result

@@ -11,7 +11,11 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from statsmodels.genmod.cov_struct import Autoregressive, Exchangeable
+from statsmodels.genmod.families import Binomial, Gaussian
+from statsmodels.genmod.generalized_estimating_equations import GEE
 from statsmodels.miscmodels.ordinal_model import OrderedModel
+import statsmodels.api as sm
 
 from modeling.config import (
     CATEGORICAL_FEATURES,
@@ -450,3 +454,240 @@ def attach_groups(X: pd.DataFrame, groups) -> pd.DataFrame:
     out = X.copy()
     out["__group__"] = groups.values if hasattr(groups, "values") else groups
     return out
+
+
+GEE_META_COLS = ["__group__", "__day_in_study__"]
+GEE_SUMMARY_HEADER = (
+    "GEE clusters: one participant-interval (id × study_interval); "
+    "Autoregressive working correlation; rows sorted by day_in_study within cluster.\n\n"
+)
+
+
+def attach_gee_features(X: pd.DataFrame, groups, study_interval, day_in_study) -> pd.DataFrame:
+    """Attach wave cluster, study_interval covariate, and day_in_study sort key for GEE."""
+    out = attach_groups(X, groups)
+    out["study_interval"] = (
+        study_interval.values if hasattr(study_interval, "values") else study_interval
+    )
+    out["__day_in_study__"] = (
+        day_in_study.values if hasattr(day_in_study, "values") else day_in_study
+    )
+    return out
+
+
+def _sort_gee_frame(X, y=None):
+    X = X.copy()
+    order = np.lexsort((X["__day_in_study__"].to_numpy(), X["__group__"].astype(str).to_numpy()))
+    X_sorted = X.iloc[order].reset_index(drop=True)
+    if y is None:
+        return X_sorted
+    y_sorted = pd.Series(y).iloc[order].reset_index(drop=True)
+    return X_sorted, y_sorted
+
+
+def _split_gee_features(X):
+    groups = X["__group__"].values
+    features = X.drop(columns=GEE_META_COLS)
+    return features, groups
+
+
+def _encode_study_interval(series):
+    values = pd.to_numeric(series, errors="coerce")
+    mapping = {value: float(idx) for idx, value in enumerate(sorted(values.dropna().unique()))}
+    return values.map(mapping).astype(float)
+
+
+def _build_gee_exog_raw(X, *, include_study_interval=True):
+    """Build numeric design columns for GEE from base features plus optional study_interval."""
+    exog_parts = []
+    numeric_cols = [col for col in NUMERIC_FEATURES if col in X.columns]
+    if numeric_cols:
+        exog_parts.append(X[numeric_cols].apply(pd.to_numeric, errors="coerce").astype(float))
+
+    cat_frame = pd.DataFrame(index=X.index)
+    for col in CATEGORICAL_FEATURES:
+        if col not in X.columns:
+            continue
+        if col == "phase":
+            cat_frame[col] = X["phase"].astype(str).map(PHASE_TO_IDX).fillna(0).astype(float)
+        else:
+            cat_frame[col] = pd.to_numeric(X[col], errors="coerce").astype(float)
+    if not cat_frame.empty:
+        exog_parts.append(cat_frame)
+
+    if include_study_interval and "study_interval" in X.columns:
+        exog_parts.append(_encode_study_interval(X["study_interval"]).rename("study_interval"))
+
+    if not exog_parts:
+        raise ValueError("No GEE design columns found in input features.")
+    return pd.concat(exog_parts, axis=1).reset_index(drop=True)
+
+
+class _GEEExogMixin:
+    def _prepare_gee_exog(self, exog_raw, *, fit=False, add_intercept=True):
+        exog = exog_raw.copy()
+        if fit:
+            self.feature_columns_ = exog.columns.tolist()
+            self.fill_values_ = exog.median(numeric_only=True)
+        else:
+            for col in self.feature_columns_:
+                if col not in exog.columns:
+                    exog[col] = np.nan
+            exog = exog[self.feature_columns_]
+
+        exog = exog.fillna(self.fill_values_)
+        if add_intercept:
+            exog = sm.add_constant(exog, has_constant="add")
+        return exog
+
+
+def _fit_binomial_gee_threshold(y_bin, exog, groups, maxiter=60):
+    """Fit one cumulative-threshold Binomial GEE, preferring Autoregressive."""
+    try:
+        result = GEE(
+            y_bin,
+            exog,
+            groups=groups,
+            family=Binomial(),
+            cov_struct=Autoregressive(grid=True),
+        ).fit(maxiter=maxiter)
+        structure = "Autoregressive"
+    except ValueError:
+        result = GEE(
+            y_bin,
+            exog,
+            groups=groups,
+            family=Binomial(),
+            cov_struct=Exchangeable(),
+        ).fit(maxiter=maxiter)
+        structure = "Exchangeable (Autoregressive fit failed)"
+    return result, structure
+
+
+class FatigueGEEGaussianModel(_GEEExogMixin):
+    """Gaussian GEE for ordinal regression with autoregressive wave-level correlation."""
+
+    def __init__(self, maxiter=60):
+        self.maxiter = maxiter
+        self.result_ = None
+        self.summary_ = None
+        self.feature_columns_ = None
+        self.fill_values_ = None
+
+    def fit(self, X, y, groups=None):
+        if groups is None:
+            raise ValueError("FatigueGEEGaussianModel requires participant-interval groups.")
+        exog = self._prepare_gee_exog(_build_gee_exog_raw(X), fit=True, add_intercept=True)
+        endog = pd.Series(y).astype(float).reset_index(drop=True)
+        groups = pd.Series(groups).reset_index(drop=True)
+        model = GEE(
+            endog,
+            exog,
+            groups=groups,
+            family=Gaussian(),
+            cov_struct=Autoregressive(grid=True),
+        )
+        self.result_ = model.fit(maxiter=self.maxiter)
+        self.summary_ = GEE_SUMMARY_HEADER + self.result_.summary().as_text()
+        return self
+
+    def predict(self, X, groups=None):
+        del groups
+        if self.result_ is None:
+            raise ValueError("FatigueGEEGaussianModel has not been fitted yet.")
+        exog = self._prepare_gee_exog(_build_gee_exog_raw(X), fit=False, add_intercept=True)
+        return clip_ordinal_predictions(self.result_.predict(exog))
+
+
+class FatigueGEEOrdinalModel(_GEEExogMixin):
+    """Cumulative-threshold Binomial GEE with autoregressive wave-level correlation."""
+
+    def __init__(self, maxiter=60):
+        self.maxiter = maxiter
+        self.threshold_results_ = None
+        self.summary_ = None
+        self.feature_columns_ = None
+        self.fill_values_ = None
+
+    def fit(self, X, y, groups=None):
+        if groups is None:
+            raise ValueError("FatigueGEEOrdinalModel requires participant-interval groups.")
+        exog = self._prepare_gee_exog(
+            _build_gee_exog_raw(X, include_study_interval=False), fit=True, add_intercept=True
+        )
+        endog = pd.Series(y).astype(int).reset_index(drop=True)
+        groups = pd.Series(groups).reset_index(drop=True)
+        self.threshold_results_ = []
+        summary_parts = [GEE_SUMMARY_HEADER.rstrip(), "Cumulative-threshold Binomial GEE models:"]
+        for threshold in range(NUM_ORDINAL_THRESHOLDS):
+            y_bin = (endog > threshold).astype(int)
+            result, structure = _fit_binomial_gee_threshold(
+                y_bin, exog, groups, maxiter=self.maxiter
+            )
+            self.threshold_results_.append(result)
+            summary_parts.append(f"\n--- Threshold y > {threshold} ({structure}) ---")
+            summary_parts.append(result.summary().as_text())
+        self.summary_ = "\n".join(summary_parts) + "\n"
+        return self
+
+    def predict(self, X, groups=None):
+        del groups
+        if not self.threshold_results_:
+            raise ValueError("FatigueGEEOrdinalModel has not been fitted yet.")
+        exog = self._prepare_gee_exog(
+            _build_gee_exog_raw(X, include_study_interval=False), fit=False, add_intercept=True
+        )
+        n_samples = len(exog)
+        prob_gt = np.zeros((n_samples, NUM_ORDINAL_CLASSES), dtype=float)
+        for threshold, result in enumerate(self.threshold_results_):
+            prob_gt[:, threshold] = result.predict(exog)
+        prob_gt[:, NUM_ORDINAL_THRESHOLDS] = 0.0
+        for threshold in range(1, NUM_ORDINAL_CLASSES):
+            prob_gt[:, threshold] = np.minimum(prob_gt[:, threshold], prob_gt[:, threshold - 1])
+        prob_le = np.ones((n_samples, NUM_ORDINAL_CLASSES + 1), dtype=float)
+        prob_le[:, 1:] = prob_gt
+        class_probs = np.maximum(prob_le[:, :-1] - prob_le[:, 1:], 0.0)
+        expected = class_probs @ np.arange(NUM_ORDINAL_CLASSES)
+        return clip_ordinal_predictions(expected)
+
+
+class FatigueGEEWrapper(BaseEstimator):
+    """Sklearn wrapper for wave-clustered GEE models."""
+
+    def __init__(self, model_cls, maxiter=60):
+        self.model_cls = model_cls
+        self.maxiter = maxiter
+        self.model_ = None
+        self.summary_ = None
+
+    def fit(self, X, y):
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        X, y = _sort_gee_frame(X, y)
+        features, groups = _split_gee_features(X)
+        self.model_ = self.model_cls(maxiter=self.maxiter)
+        self.model_.fit(features, y, groups=groups)
+        self.summary_ = self.model_.summary_
+        return self
+
+    def predict(self, X):
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        X = _sort_gee_frame(X)
+        features, groups = _split_gee_features(X)
+        return self.model_.predict(features, groups=groups)
+
+    def summary(self):
+        if self.summary_ is None:
+            raise ValueError("FatigueGEEWrapper has not been fitted yet.")
+        return self.summary_
+
+
+def build_gee_gaussian(maxiter=60, **kwargs):
+    del kwargs
+    return FatigueGEEWrapper(FatigueGEEGaussianModel, maxiter=maxiter)
+
+
+def build_gee_ordinal(maxiter=60, **kwargs):
+    del kwargs
+    return FatigueGEEWrapper(FatigueGEEOrdinalModel, maxiter=maxiter)

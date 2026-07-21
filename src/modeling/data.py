@@ -335,6 +335,16 @@ def attach_prior_frame(X, prior_series, col=PRIOR_COL):
     return out
 
 
+def make_wave_groups(df, mask):
+    """Composite cluster id: one participant-interval (id × study_interval)."""
+    wave = df.loc[mask, TIME_SERIES_GROUP_COLS]
+    return (
+        wave["id"].astype(int).astype(str)
+        + "_"
+        + wave["study_interval"].astype(int).astype(str)
+    ).reset_index(drop=True)
+
+
 def prepare_splits(
     df,
     test_size=TEST_SIZE,
@@ -347,6 +357,8 @@ def prepare_splits(
         ewma_alpha = EWMA_ALPHA
     if rolling_window is None:
         rolling_window = ROLLING_WINDOW
+
+    df = df.sort_values(TIME_SERIES_GROUP_COLS + [TIME_COL]).reset_index(drop=True)
 
     strata = participant_strata(df) if stratify else None
     train_val_ids, test_ids = split_participant_ids(
