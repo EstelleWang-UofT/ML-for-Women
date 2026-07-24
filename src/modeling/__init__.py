@@ -16,7 +16,15 @@ from modeling.config import (
     TEST_SIZE,
 )
 from modeling.cv import evaluate_on_test, run_group_cv, run_model_benchmark
-from modeling.data import load_fatigue_data, prepare_splits, split_summary_table
+from modeling.data import (
+    build_split_bundle,
+    load_fatigue_data,
+    participant_strata,
+    preprocess_after_split,
+    prepare_splits,
+    split_participant_ids,
+    split_summary_table,
+)
 from modeling.metrics import compute_metrics
 from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
 from modeling.registry import ORDINAL_MODELS, get_search_space
@@ -53,12 +61,15 @@ __all__ = [
     "TEST_SIZE",
     "CATEGORY_ORDER",
     "build_history_ablation_summary",
+    "build_split_bundle",
     "collect_categorized_summaries",
     "collect_summaries",
     "compute_metrics",
     "evaluate_on_test",
     "get_search_space",
     "load_fatigue_data",
+    "participant_strata",
+    "preprocess_after_split",
     "prepare_splits",
     "prepare_tuned_bundle",
     "run_all_baseline_benchmarks",
@@ -66,6 +77,7 @@ __all__ = [
     "run_group_cv",
     "run_leave_one_out_ablation",
     "run_model_benchmark",
+    "split_participant_ids",
     "split_summary_table",
     "summarize_baseline_metrics",
     "summarize_history_recommendation",

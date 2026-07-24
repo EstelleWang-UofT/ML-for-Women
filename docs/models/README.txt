@@ -31,8 +31,9 @@ Preprocessing (merged preprocess.ipynb):
   1. Participant-level median for 9 activity/HR columns (pre-split, no cross-participant leak)
   2. menstrual_health_literacy_num left as NaN through export
 
-Post-split imputation (modeling.data.prepare_splits):
-  After the participant hold-out, literacy NaNs are filled with the train_val median only.
+Post-split imputation (modeling.data.preprocess_after_split):
+  After the participant hold-out, menstrual_health_literacy_num NaNs are filled
+  with the train_val median only (via preprocess_after_split in prepare_splits).
   Test rows never contribute to that median.
 
 Rough scale: ~3,331 daily rows, 42 participants.

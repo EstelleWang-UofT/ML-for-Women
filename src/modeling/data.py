@@ -117,6 +117,77 @@ def split_participant_ids(
     return train_val_ids, test_ids
 
 
+def preprocess_after_split(
+    df,
+    train_val_mask,
+    literacy_col="menstrual_health_literacy_num",
+):
+    """Post-split preprocessing fit on train/val rows only, applied to all rows."""
+    if literacy_col not in df.columns or not df[literacy_col].isna().any():
+        return df
+    df = df.copy()
+    literacy_median = df.loc[train_val_mask, literacy_col].median()
+    df[literacy_col] = df[literacy_col].fillna(literacy_median)
+    return df
+
+
+def build_split_bundle(
+    df,
+    train_val_ids,
+    test_ids,
+    train_val_mask,
+    test_mask,
+    ewma_alpha=EWMA_ALPHA,
+    rolling_window=ROLLING_WINDOW,
+):
+    """Build feature matrices and targets from a preprocessed dataframe and split masks."""
+    X_all = make_feature_matrix(df)
+    X_all_history = make_feature_matrix_with_history(
+        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+    )
+
+    X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
+    X_test = X_all.loc[test_mask].reset_index(drop=True)
+    X_train_val_tree = build_tree_matrix(X_train_val)
+    X_test_tree = build_tree_matrix(X_test)
+
+    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
+    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
+    X_train_val_history_tree = build_tree_matrix(X_train_val_history)
+    X_test_history_tree = build_tree_matrix(X_test_history)
+
+    y_ordinal = df["fatigue_num"].astype(int)
+    y_lag1 = compute_fatigue_lag1(df)
+    y_expanding = compute_expanding_mean_prior(df)
+
+    y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
+    y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
+
+    return SplitBundle(
+        df=df,
+        train_val_ids=train_val_ids,
+        test_ids=test_ids,
+        train_val_mask=train_val_mask,
+        test_mask=test_mask,
+        X_train_val=X_train_val,
+        X_test=X_test,
+        X_train_val_tree=X_train_val_tree,
+        X_test_tree=X_test_tree,
+        X_train_val_history=X_train_val_history,
+        X_test_history=X_test_history,
+        X_train_val_history_tree=X_train_val_history_tree,
+        X_test_history_tree=X_test_history_tree,
+        y_ord_train_val=y_ordinal.loc[train_val_mask].reset_index(drop=True),
+        y_ord_test=y_ordinal.loc[test_mask].reset_index(drop=True),
+        groups_train_val=df.loc[train_val_mask, "id"].reset_index(drop=True),
+        groups_test=df.loc[test_mask, "id"].reset_index(drop=True),
+        y_lag1_train_val=y_lag1.loc[train_val_mask].reset_index(drop=True),
+        y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
+        y_expanding_train_val=y_expanding_train_val,
+        y_expanding_test=y_expanding_test,
+    )
+
+
 def make_feature_matrix(
     data,
     numeric_features=NUMERIC_FEATURES,
@@ -395,56 +466,16 @@ def prepare_splits(
     train_val_mask = df["id"].isin(train_val_ids)
     test_mask = df["id"].isin(test_ids)
 
-    literacy_col = "menstrual_health_literacy_num"
-    if literacy_col in df.columns and df[literacy_col].isna().any():
-        df = df.copy()
-        literacy_median = df.loc[train_val_mask, literacy_col].median()
-        df[literacy_col] = df[literacy_col].fillna(literacy_median)
+    df = preprocess_after_split(df, train_val_mask)
 
-    X_all = make_feature_matrix(df)
-    X_all_history = make_feature_matrix_with_history(
-        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
-    )
-
-    X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
-    X_test = X_all.loc[test_mask].reset_index(drop=True)
-    X_train_val_tree = build_tree_matrix(X_train_val)
-    X_test_tree = build_tree_matrix(X_test)
-
-    X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
-    X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
-    X_train_val_history_tree = build_tree_matrix(X_train_val_history)
-    X_test_history_tree = build_tree_matrix(X_test_history)
-
-    y_ordinal = df["fatigue_num"].astype(int)
-    y_lag1 = compute_fatigue_lag1(df)
-    y_expanding = compute_expanding_mean_prior(df)
-
-    y_expanding_train_val = y_expanding.loc[train_val_mask].reset_index(drop=True)
-    y_expanding_test = y_expanding.loc[test_mask].reset_index(drop=True)
-
-    return SplitBundle(
-        df=df,
-        train_val_ids=train_val_ids,
-        test_ids=test_ids,
-        train_val_mask=train_val_mask,
-        test_mask=test_mask,
-        X_train_val=X_train_val,
-        X_test=X_test,
-        X_train_val_tree=X_train_val_tree,
-        X_test_tree=X_test_tree,
-        X_train_val_history=X_train_val_history,
-        X_test_history=X_test_history,
-        X_train_val_history_tree=X_train_val_history_tree,
-        X_test_history_tree=X_test_history_tree,
-        y_ord_train_val=y_ordinal.loc[train_val_mask].reset_index(drop=True),
-        y_ord_test=y_ordinal.loc[test_mask].reset_index(drop=True),
-        groups_train_val=df.loc[train_val_mask, "id"].reset_index(drop=True),
-        groups_test=df.loc[test_mask, "id"].reset_index(drop=True),
-        y_lag1_train_val=y_lag1.loc[train_val_mask].reset_index(drop=True),
-        y_lag1_test=y_lag1.loc[test_mask].reset_index(drop=True),
-        y_expanding_train_val=y_expanding_train_val,
-        y_expanding_test=y_expanding_test,
+    return build_split_bundle(
+        df,
+        train_val_ids,
+        test_ids,
+        train_val_mask,
+        test_mask,
+        ewma_alpha=ewma_alpha,
+        rolling_window=rolling_window,
     )
 
 

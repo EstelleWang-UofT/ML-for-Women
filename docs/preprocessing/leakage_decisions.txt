@@ -15,7 +15,7 @@ Smoother selection + apply, peak_zone drop    | merged preprocess           | OK
 log1p on activity columns                     | merged preprocess           | OK before split
 Calories cap 4000                             | merged preprocess           | OK before split
 Participant-level median (9 activity/HR cols) | merged preprocess           | OK before split
-Global median (menstrual_health_literacy_num) | modeling/data.py            | train_val fit only (post-split)
+Global median (menstrual_health_literacy_num) | modeling/data.py preprocess_after_split | train_val fit only (post-split)
 
 Implementation:
   merged preprocess.ipynb — participant-level median for 9 columns; literacy NaNs kept

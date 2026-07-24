@@ -201,7 +201,7 @@ def test_mae_with_history(
     X_train = _resolve_model_matrix(model_name, X_train_raw, X_train_tree)
     X_test = _resolve_model_matrix(model_name, X_test_raw, X_test_tree)
     factory = make_model_factory(model_name, params, ORDINAL_MODELS)
-    metrics = evaluate_on_test(factory, X_train, y_train_val, X_test, y_test)
+    metrics, _ = evaluate_on_test(factory, X_train, y_train_val, X_test, y_test)
     return float(metrics[ORDINAL_METRIC])
 
 
