@@ -42,23 +42,22 @@ GEE_OPTUNA_TRIALS = 10
 ORDINAL_METRIC = "mae"
 
 HISTORY_FEATURES = [
-    "fatigue_lag1",
-    "fatigue_expanding_mean",
     "fatigue_ewma",
-    "activity_logsum_roll3_mean",
-    "calories_sum_roll3_mean",
-    "very_roll3_mean",
-    "fatigue_delta_lag1",
+    "fatigue_expanding_mean",
+    "fatigue_lag1",
 ]
 
-EWMA_ALPHA = 0.3
-ROLLING_WINDOW = 3
+EWMA_ALPHA = 0.366976
 ROLLING_WINDOW_COLUMNS = [
     "activity_logsum_roll3_mean",
     "calories_sum_roll3_mean",
     "very_roll3_mean",
 ]
-ROLLING_WINDOWS = {col: ROLLING_WINDOW for col in ROLLING_WINDOW_COLUMNS}
+ROLLING_WINDOWS = {
+    "activity_logsum_roll3_mean": 2,
+    "calories_sum_roll3_mean": 2,
+    "very_roll3_mean": 5,
+}
 ROLLING_WINDOW_PARAM_NAMES = {
     "activity_logsum_roll3_mean": "activity_roll_window",
     "calories_sum_roll3_mean": "calories_roll_window",

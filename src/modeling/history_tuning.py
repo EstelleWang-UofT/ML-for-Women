@@ -17,7 +17,6 @@ from modeling.config import (
     N_CV_FOLDS,
     ORDINAL_METRIC,
     RANDOM_STATE,
-    ROLLING_WINDOW,
     ROLLING_WINDOW_CHOICES,
     ROLLING_WINDOW_COLUMNS,
     ROLLING_WINDOW_PARAM_NAMES,
@@ -42,7 +41,6 @@ from modeling.registry import (
 
 DEFAULT_PROXY_PARAMS = {
     "catboost_ordinal": dict(HISTORY_PROXY_PARAMS),
-    "catboost_regressor": {},
     "linear_regression": {"alpha": 1.0},
 }
 
@@ -86,11 +84,10 @@ def build_history_matrices(
     test_mask,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     history_cols=None,
 ):
     """Build imputed raw and tree matrices for a history configuration."""
-    windows = resolve_rolling_windows(rolling_windows, rolling_window)
+    windows = resolve_rolling_windows(rolling_windows)
     if history_cols is not None and len(history_cols) == 0:
         X_all = make_feature_matrix(df)
         X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
@@ -141,7 +138,6 @@ def cv_mae_with_history(
     model_name,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     history_cols=None,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -162,7 +158,6 @@ def cv_mae_with_history(
         test_mask,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        rolling_window=rolling_window,
         history_cols=history_cols,
     )
     X = _resolve_model_matrix(model_name, X_raw, X_tree)
@@ -194,7 +189,6 @@ def test_mae_with_history(
     model_name,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     history_cols=None,
     model_params=None,
 ):
@@ -213,7 +207,6 @@ def test_mae_with_history(
         test_mask,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        rolling_window=rolling_window,
         history_cols=history_cols,
     )
     X_train = _resolve_model_matrix(model_name, X_train_raw, X_train_tree)
@@ -277,7 +270,6 @@ def run_leave_one_out_ablation(
     bundle,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     model_name=HISTORY_ABLATION_MODEL,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -303,7 +295,6 @@ def run_leave_one_out_ablation(
         model_name=model_name,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        rolling_window=rolling_window,
         history_cols=list(HISTORY_FEATURES),
         model_params=model_params,
         n_splits=n_splits,
@@ -322,7 +313,6 @@ def run_leave_one_out_ablation(
             model_name=model_name,
             ewma_alpha=ewma_alpha,
             rolling_windows=rolling_windows,
-            rolling_window=rolling_window,
             history_cols=subset,
             model_params=model_params,
             n_splits=n_splits,
@@ -349,7 +339,6 @@ def run_forward_selection(
     bundle,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     model_name=HISTORY_ABLATION_MODEL,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -376,7 +365,6 @@ def run_forward_selection(
         model_name=model_name,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        rolling_window=rolling_window,
         history_cols=[],
         model_params=model_params,
         n_splits=n_splits,
@@ -408,7 +396,6 @@ def run_forward_selection(
                 model_name=model_name,
                 ewma_alpha=ewma_alpha,
                 rolling_windows=rolling_windows,
-                rolling_window=rolling_window,
                 history_cols=trial_cols,
                 model_params=model_params,
                 n_splits=n_splits,
@@ -474,7 +461,6 @@ def prepare_tuned_bundle(
     df,
     ewma_alpha,
     rolling_windows=None,
-    rolling_window=None,
     seed=RANDOM_STATE,
 ):
     """Rebuild SplitBundle with tuned history construction params."""
@@ -483,5 +469,4 @@ def prepare_tuned_bundle(
         seed=seed,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        rolling_window=rolling_window,
     )
