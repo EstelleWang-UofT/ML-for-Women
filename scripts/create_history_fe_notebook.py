@@ -1,0 +1,307 @@
+"""Create history feature engineering.ipynb."""
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+NOTEBOOK = ROOT / "notebooks/physical activity/history feature engineering.ipynb"
+
+cells = [
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "# History feature engineering\n",
+            "\n",
+            "Two-stage experiment for **history features** used in "
+            "[`3 fatigue_modeling.ipynb`](3%20fatigue_modeling.ipynb):\n",
+            "\n",
+            "1. **Tune construction** — Optuna over `ewma_alpha` and `rolling_window` "
+            "(same 7 history columns).\n",
+            "2. **Ablation** — with best construction fixed, find which history columns to keep "
+            "(leave-one-out ranking + forward selection).\n",
+            "\n",
+            "Decisions use **GroupKFold CV on train/val only**. Held-out test is used once in §3.\n",
+            "\n",
+            "**Proxy model:** `catboost_ordinal` with fixed hyperparameters "
+            "(`HISTORY_PROXY_PARAMS` in config — Optuna best from "
+            "`catboost_ordinal_history` in the main notebook §3 History). "
+            "There is **no model Optuna** in this notebook; only history construction (§1) "
+            "and feature subset (§2) vary.\n",
+            "\n",
+            "These CatBoost params were tuned for one history setup (default `EWMA_ALPHA` / "
+            "`ROLLING_WINDOW`, all 7 features). When ablation changes columns or construction, "
+            "they may no longer be globally optimal — but they are a fixed, realistic measuring "
+            "stick. After applying FE recommendations, re-run §3 History in the main notebook "
+            "for fresh full model Optuna.\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": ["%pip install -q -r ../../requirements.txt\n"],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "import sys\n",
+            "from pathlib import Path\n",
+            "\n",
+            "_src = Path('../../src').resolve()\n",
+            "if str(_src) not in sys.path:\n",
+            "    sys.path.insert(0, str(_src))\n",
+            "\n",
+            "for _mod in [k for k in list(sys.modules) if k == 'modeling' or k.startswith('modeling.')]:\n",
+            "    del sys.modules[_mod]\n",
+            "\n",
+            "import pandas as pd\n",
+            "from modeling.config import (\n",
+            "    DATA_PATH,\n",
+            "    EWMA_ALPHA,\n",
+            "    HISTORY_ABLATION_MODEL,\n",
+            "    HISTORY_FEATURES,\n",
+            "    HISTORY_PROXY_PARAMS,\n",
+            "    HISTORY_TUNING_TRIALS,\n",
+            "    N_CV_FOLDS,\n",
+            "    ROLLING_WINDOW,\n",
+            ")\n",
+            "from modeling.data import load_fatigue_data, prepare_splits, split_summary_table\n",
+            "from modeling.history_tuning import (\n",
+            "    cv_mae_with_history,\n",
+            "    prepare_tuned_bundle,\n",
+            "    run_forward_selection,\n",
+            "    run_leave_one_out_ablation,\n",
+            "    summarize_history_recommendation,\n",
+            "    test_mae_with_history,\n",
+            "    tune_history_construction,\n",
+            ")\n",
+        ],
+    },
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": ["## Load data and split\n"],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "df = load_fatigue_data('../../' + DATA_PATH)\n",
+            "bundle = prepare_splits(df)\n",
+            "\n",
+            "print(f\"Rows: {len(df):,}  Participants: {df['id'].nunique()}\")\n",
+            "display(split_summary_table(bundle))\n",
+            "print('Proxy model:', HISTORY_ABLATION_MODEL)\n",
+            "print('Proxy params:', HISTORY_PROXY_PARAMS)\n",
+            "print('Default construction:', f'ewma_alpha={EWMA_ALPHA}', f'rolling_window={ROLLING_WINDOW}')\n",
+        ],
+    },
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "## 1. Tune history construction\n",
+            "\n",
+            "Optuna search over `ewma_alpha` ∈ [0.1, 0.5] and `rolling_window` ∈ {2, 3, 5, 7}. "
+            "All 7 history columns are included. The proxy model is `catboost_ordinal` with fixed "
+            "`HISTORY_PROXY_PARAMS` (no model Optuna here).\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "default_cv_mae = cv_mae_with_history(\n",
+            "    df,\n",
+            "    bundle.train_val_mask,\n",
+            "    bundle.test_mask,\n",
+            "    bundle.y_ord_train_val,\n",
+            "    bundle.groups_train_val,\n",
+            "    model_name=HISTORY_ABLATION_MODEL,\n",
+            "    ewma_alpha=EWMA_ALPHA,\n",
+            "    rolling_window=ROLLING_WINDOW,\n",
+            "    history_cols=list(HISTORY_FEATURES),\n",
+            "    n_splits=N_CV_FOLDS,\n",
+            "    test_ids=bundle.test_ids,\n",
+            ")\n",
+            "print(f'Default construction CV MAE: {default_cv_mae:.4f}')\n",
+            "\n",
+            "construction_result = tune_history_construction(\n",
+            "    df,\n",
+            "    bundle,\n",
+            "    model_name=HISTORY_ABLATION_MODEL,\n",
+            "    n_trials=HISTORY_TUNING_TRIALS,\n",
+            "    n_splits=N_CV_FOLDS,\n",
+            ")\n",
+            "best_alpha = construction_result['best_params']['ewma_alpha']\n",
+            "best_window = int(construction_result['best_params']['rolling_window'])\n",
+            "print(f\"Best construction: ewma_alpha={best_alpha:.4f}, rolling_window={best_window}\")\n",
+            "print(f\"Tuned CV MAE: {construction_result['best_cv_mae']:.4f}\")\n",
+            "print(f\"Delta vs default: {construction_result['best_cv_mae'] - default_cv_mae:+.4f}\")\n",
+        ],
+    },
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "## 2. History feature ablation\n",
+            "\n",
+            "Rebuild the bundle with tuned construction params, then:\n",
+            "- **Leave-one-out:** drop each history column; higher `cv_mae_increase_vs_all` = more important.\n",
+            "- **Forward selection:** start from base features only; greedily add columns while CV MAE improves.\n",
+            "\n",
+            "Same proxy model and fixed `HISTORY_PROXY_PARAMS` as §1.\n",
+            "\n",
+            "Rolling column names (e.g. `activity_logsum_roll3_mean`) are unchanged when `rolling_window != 3`.\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "tuned_bundle = prepare_tuned_bundle(df, best_alpha, best_window)\n",
+            "\n",
+            "all_features_cv_mae, feature_importance = run_leave_one_out_ablation(\n",
+            "    df,\n",
+            "    tuned_bundle,\n",
+            "    ewma_alpha=best_alpha,\n",
+            "    rolling_window=best_window,\n",
+            "    model_name=HISTORY_ABLATION_MODEL,\n",
+            "    n_splits=N_CV_FOLDS,\n",
+            ")\n",
+            "print(f'All-{len(HISTORY_FEATURES)}-feature CV MAE: {all_features_cv_mae:.4f}')\n",
+            "print('Removing each history feature — higher cv_mae_increase_vs_all = more important:')\n",
+            "display(feature_importance)\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "forward_selected, forward_cv_mae, forward_path = run_forward_selection(\n",
+            "    df,\n",
+            "    tuned_bundle,\n",
+            "    ewma_alpha=best_alpha,\n",
+            "    rolling_window=best_window,\n",
+            "    model_name=HISTORY_ABLATION_MODEL,\n",
+            "    n_splits=N_CV_FOLDS,\n",
+            ")\n",
+            "print('Forward selection path:')\n",
+            "display(forward_path)\n",
+            "print(f'Recommended subset ({len(forward_selected)} features): {forward_selected}')\n",
+            "print(f'Forward-selection CV MAE: {forward_cv_mae:.4f}')\n",
+            "\n",
+            "recommendation = summarize_history_recommendation(\n",
+            "    construction_result,\n",
+            "    forward_selected,\n",
+            "    forward_cv_mae,\n",
+            "    default_cv_mae=default_cv_mae,\n",
+            "    feature_importance=feature_importance,\n",
+            ")\n",
+            "pd.Series(recommendation)\n",
+        ],
+    },
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "## 3. One-shot test evaluation\n",
+            "\n",
+            "Single held-out test MAE with the recommended construction params and forward-selected "
+            "history subset. Same `catboost_ordinal` proxy and `HISTORY_PROXY_PARAMS`. "
+            "Use for reporting only — not for tuning decisions.\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "test_mae = test_mae_with_history(\n",
+            "    df,\n",
+            "    tuned_bundle.train_val_mask,\n",
+            "    tuned_bundle.test_mask,\n",
+            "    tuned_bundle.y_ord_train_val,\n",
+            "    tuned_bundle.y_ord_test,\n",
+            "    model_name=HISTORY_ABLATION_MODEL,\n",
+            "    ewma_alpha=best_alpha,\n",
+            "    rolling_window=best_window,\n",
+            "    history_cols=forward_selected,\n",
+            ")\n",
+            "print(f'Proxy test MAE (recommended config): {test_mae:.4f}')\n",
+        ],
+    },
+    {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "## 4. Apply to main pipeline\n",
+            "\n",
+            "When satisfied with the results above, copy into [`src/modeling/config.py`](../../src/modeling/config.py):\n",
+            "\n",
+            "```python\n",
+            "EWMA_ALPHA = ...        # from recommendation['ewma_alpha']\n",
+            "ROLLING_WINDOW = ...    # from recommendation['rolling_window']\n",
+            "HISTORY_FEATURES = [    # from recommendation['history_features']\n",
+            "    ...,\n",
+            "]\n",
+            "```\n",
+            "\n",
+            "Then re-run §3 History in [`3 fatigue_modeling.ipynb`](3%20fatigue_modeling.ipynb) "
+            "(full model Optuna tuning, not just the proxy).\n",
+        ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": [
+            "print('Suggested config.py updates:')\n",
+            "print(f'EWMA_ALPHA = {recommendation[\"ewma_alpha\"]:.6f}')\n",
+            "print(f'ROLLING_WINDOW = {recommendation[\"rolling_window\"]}')\n",
+            "print('HISTORY_FEATURES = [')\n",
+            "for feature in recommendation['history_features']:\n",
+            "    print(f'    \"{feature}\",')\n",
+            "print(']')\n",
+        ],
+    },
+]
+
+nb = {
+    "cells": cells,
+    "metadata": {
+        "kernelspec": {
+            "display_name": ".venv (3.10.11)",
+            "language": "python",
+            "name": "python3",
+        },
+        "language_info": {
+            "codemirror_mode": {"name": "ipython", "version": 3},
+            "file_extension": ".py",
+            "mimetype": "text/x-python",
+            "name": "python",
+            "nbconvert_exporter": "python",
+            "pygments_lexer": "ipython3",
+            "version": "3.10.11",
+        },
+    },
+    "nbformat": 4,
+    "nbformat_minor": 5,
+}
+
+NOTEBOOK.write_text(json.dumps(nb, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+print(f"Wrote {NOTEBOOK}")

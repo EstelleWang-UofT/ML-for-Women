@@ -79,7 +79,7 @@ def _gee_search_space(trial):
     }
 
 
-def resolve_training_data(name, bundle, feature_set="base"):
+def resolve_training_data(name, bundle, feature_set="base", history_cols=None):
     """Return kwargs for tune_model / run_model_benchmark for a given model."""
     if feature_set not in {"base", "history"}:
         raise ValueError(f"Unsupported feature_set: {feature_set!r} (expected 'base' or 'history')")
@@ -89,7 +89,8 @@ def resolve_training_data(name, bundle, feature_set="base"):
 
     if feature_set == "history":
         X_train_val_raw, X_test_raw, X_train_val_tree, X_test_tree = history_feature_matrices(
-            bundle
+            bundle,
+            history_cols=history_cols,
         )
     else:
         X_train_val_raw = bundle.X_train_val

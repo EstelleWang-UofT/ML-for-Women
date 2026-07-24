@@ -61,9 +61,18 @@ History features (HISTORY_FEATURES — past days only, per participant wave;
   activity_logsum_roll3_mean (rolling mean of prior log1p lightly + log1p moderately + log1p very),
   calories_sum_roll3_mean, very_roll3_mean, fatigue_delta_lag1
 
-Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (fixed defaults for history ablation),
+Constants: EWMA_ALPHA=0.3, ROLLING_WINDOW=3 (defaults for main notebook history runs),
   EWMA_ALPHA_RANGE=(0.1, 0.5), ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
+  HISTORY_TUNING_TRIALS=20, HISTORY_ABLATION_MODEL=catboost_ordinal,
+  HISTORY_PROXY_PARAMS (Optuna best from catboost_ordinal_history in main notebook §3 History),
   PRIOR_COL="__prior__"
+
+History feature engineering (standalone notebook):
+  notebooks/physical activity/history feature engineering.ipynb
+  Proxy model: catboost_ordinal with fixed HISTORY_PROXY_PARAMS (no model Optuna in notebook).
+  Stage 1: Optuna tune ewma_alpha + rolling_window (CV on train/val, proxy model).
+  Stage 2: leave-one-out + forward selection over HISTORY_FEATURES.
+  Apply recommended values manually to config.py before re-running main notebook §3 History.
 
 
 TRAIN / TEST SPLIT

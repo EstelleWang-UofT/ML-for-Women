@@ -38,14 +38,18 @@ NUM_ORDINAL_CLASSES = 6
 NUM_ORDINAL_THRESHOLDS = NUM_ORDINAL_CLASSES - 1
 
 
+def _history_columns_in(X):
+    return [col for col in HISTORY_FEATURES if col in X.columns]
+
+
 def _has_history_features(X):
-    return all(col in X.columns for col in HISTORY_FEATURES)
+    return bool(_history_columns_in(X))
 
 
-def _base_preprocessor(include_history=False):
+def _base_preprocessor(history_cols=None):
     numeric_features = list(NUMERIC_FEATURES)
-    if include_history:
-        numeric_features = numeric_features + list(HISTORY_FEATURES)
+    if history_cols:
+        numeric_features = numeric_features + list(history_cols)
     return ColumnTransformer(
         [
             ("num", StandardScaler(), numeric_features),
@@ -67,7 +71,10 @@ class RidgeOrdinalEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _base_preprocessor(include_history=_has_history_features(X))
+        self.history_cols_ = _history_columns_in(X)
+        self.prep_ = _base_preprocessor(
+            history_cols=self.history_cols_ if self.history_cols_ else None
+        )
         Xt = self.prep_.fit_transform(X)
         self.model_ = Ridge(alpha=self.alpha)
         self.model_.fit(Xt, y)
@@ -87,7 +94,10 @@ class OrderedLogisticEstimator(BaseEstimator):
         self.model_ = None
 
     def fit(self, X, y):
-        self.prep_ = _base_preprocessor(include_history=_has_history_features(X))
+        self.history_cols_ = _history_columns_in(X)
+        self.prep_ = _base_preprocessor(
+            history_cols=self.history_cols_ if self.history_cols_ else None
+        )
         Xt = self.prep_.fit_transform(X)
         self.model_ = mord.LogisticAT(alpha=self.alpha)
         self.model_.fit(Xt, y)

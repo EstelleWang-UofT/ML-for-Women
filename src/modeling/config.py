@@ -55,4 +55,15 @@ EWMA_ALPHA = 0.3
 ROLLING_WINDOW = 3
 EWMA_ALPHA_RANGE = (0.1, 0.5)
 ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
+HISTORY_TUNING_TRIALS = 20
+HISTORY_ABLATION_MODEL = "catboost_ordinal"
+
+# Optuna best from 3 fatigue_modeling.ipynb §3 catboost_ordinal_history
+# (default history construction; update after re-tuning main notebook)
+HISTORY_PROXY_PARAMS = {
+    "iterations": 366,
+    "depth": 4,
+    "learning_rate": 0.034143215054019314,
+    "l2_leaf_reg": 3.5798039531025863,
+}
 PRIOR_COL = "__prior__"

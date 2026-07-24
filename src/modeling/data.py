@@ -320,12 +320,35 @@ def impute_history_features(
     return X_tv, X_te
 
 
-def history_feature_matrices(bundle):
+def _subset_history_columns(X_train_val, X_test, history_cols):
+    """Drop history columns not in history_cols (None keeps all present history cols)."""
+    if history_cols is None:
+        return X_train_val, X_test
+    drop = [
+        col
+        for col in HISTORY_FEATURES
+        if col in X_train_val.columns and col not in history_cols
+    ]
+    if not drop:
+        return X_train_val, X_test
+    return X_train_val.drop(columns=drop), X_test.drop(columns=drop)
+
+
+def history_feature_matrices(bundle, history_cols=None):
     """Return imputed raw and tree history matrices for train/val and test."""
+    if history_cols is not None and len(history_cols) == 0:
+        return (
+            bundle.X_train_val,
+            bundle.X_test,
+            bundle.X_train_val_tree,
+            bundle.X_test_tree,
+        )
     X_tv, X_te = impute_history_features(
         bundle.X_train_val_history,
         bundle.X_test_history,
+        history_cols=history_cols or HISTORY_FEATURES,
     )
+    X_tv, X_te = _subset_history_columns(X_tv, X_te, history_cols)
     return X_tv, X_te, build_tree_matrix(X_tv), build_tree_matrix(X_te)
 
 

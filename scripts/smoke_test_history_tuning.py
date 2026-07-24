@@ -1,50 +1,81 @@
-"""Smoke test for history feature ablation (feature_set='history')."""
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from modeling.config import DATA_PATH, HISTORY_FEATURES, NUMERIC_FEATURES, CATEGORICAL_FEATURES
-from modeling.data import (
-    history_feature_matrices,
-    load_fatigue_data,
-    prepare_splits,
-)
-from modeling.registry import ORDINAL_MODELS
-from modeling.runner import tune_and_benchmark_model
-
-df = load_fatigue_data(DATA_PATH)
-bundle = prepare_splits(df)
-X_tv_raw, X_te_raw, X_tv_tree, X_te_tree = history_feature_matrices(bundle)
-
-expected_raw_cols = len(NUMERIC_FEATURES) + len(CATEGORICAL_FEATURES) + len(HISTORY_FEATURES)
-assert X_tv_raw.shape[1] == expected_raw_cols
-assert X_te_raw.shape[1] == expected_raw_cols
-assert X_tv_tree.shape[0] == len(bundle.y_ord_train_val)
-print("history raw cols", X_tv_raw.shape[1], "tree cols", X_tv_tree.shape[1])
-
-result, params = tune_and_benchmark_model(
-    "catboost_regressor",
-    bundle,
-    ORDINAL_MODELS,
-    feature_set="history",
-    display_name="catboost_regressor_history",
-    n_trials=2,
-    n_splits=3,
-)
-print("catboost_regressor_history test_mae", result["test_metrics"]["mae"])
-print("params keys", sorted(params.keys()))
-assert result["name"] == "catboost_regressor_history"
-assert result["feature_set"] == "history"
-
-result_lr, _ = tune_and_benchmark_model(
-    "linear_regression",
-    bundle,
-    ORDINAL_MODELS,
-    feature_set="history",
-    display_name="linear_regression_history",
-    n_trials=2,
-    n_splits=3,
-)
-print("linear_regression_history test_mae", result_lr["test_metrics"]["mae"])
-print("OK")
+"""Smoke test for history construction tuning and feature ablation."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from modeling.config import (
+    DATA_PATH,
+    HISTORY_ABLATION_MODEL,
+    HISTORY_FEATURES,
+    HISTORY_PROXY_PARAMS,
+)
+from modeling.data import load_fatigue_data, prepare_splits
+from modeling.history_tuning import (
+    cv_mae_with_history,
+    run_forward_selection,
+    run_leave_one_out_ablation,
+    tune_history_construction,
+)
+
+df = load_fatigue_data(DATA_PATH)
+bundle = prepare_splits(df)
+
+default_mae = cv_mae_with_history(
+    df,
+    bundle.train_val_mask,
+    bundle.test_mask,
+    bundle.y_ord_train_val,
+    bundle.groups_train_val,
+    model_name=HISTORY_ABLATION_MODEL,
+    ewma_alpha=0.3,
+    rolling_window=3,
+    history_cols=list(HISTORY_FEATURES),
+    n_splits=3,
+    test_ids=bundle.test_ids,
+)
+print("proxy model", HISTORY_ABLATION_MODEL)
+print("proxy params", HISTORY_PROXY_PARAMS)
+print("default cv_mae", round(default_mae, 4))
+
+result = tune_history_construction(
+    df,
+    bundle,
+    model_name=HISTORY_ABLATION_MODEL,
+    n_trials=3,
+    n_splits=3,
+)
+print("best params", result["best_params"])
+print("best cv_mae", round(result["best_cv_mae"], 4))
+
+alpha = result["best_params"]["ewma_alpha"]
+window = int(result["best_params"]["rolling_window"])
+_, feature_importance = run_leave_one_out_ablation(
+    df,
+    bundle,
+    ewma_alpha=alpha,
+    rolling_window=window,
+    model_name=HISTORY_ABLATION_MODEL,
+    n_splits=3,
+)
+print("feature importance rows", len(feature_importance))
+assert len(feature_importance) == len(HISTORY_FEATURES)
+assert list(feature_importance.columns) == [
+    "history_feature",
+    "n_history_features_remaining",
+    "cv_mae_without_feature",
+    "cv_mae_increase_vs_all",
+]
+
+selected, forward_mae, path = run_forward_selection(
+    df,
+    bundle,
+    ewma_alpha=alpha,
+    rolling_window=window,
+    model_name=HISTORY_ABLATION_MODEL,
+    n_splits=3,
+)
+print("forward selected", selected)
+print("forward cv_mae", round(forward_mae, 4))
+print("forward steps", len(path))
+print("OK")
