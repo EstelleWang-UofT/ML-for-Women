@@ -15,8 +15,8 @@ cells = [
             "Two-stage experiment for **history features** used in "
             "[`3 fatigue_modeling.ipynb`](3%20fatigue_modeling.ipynb):\n",
             "\n",
-            "1. **Tune construction** — Optuna over `ewma_alpha` and `rolling_window` "
-            "(same 7 history columns).\n",
+            "1. **Tune construction** — Optuna over `ewma_alpha` and **per-column rolling windows** "
+            "for the three rolling-mean history features (same 7 history columns overall).\n",
             "2. **Ablation** — with best construction fixed, find which history columns to keep "
             "(leave-one-out ranking + forward selection).\n",
             "\n",
@@ -28,11 +28,7 @@ cells = [
             "There is **no model Optuna** in this notebook; only history construction (§1) "
             "and feature subset (§2) vary.\n",
             "\n",
-            "These CatBoost params were tuned for one history setup (default `EWMA_ALPHA` / "
-            "`ROLLING_WINDOW`, all 7 features). When ablation changes columns or construction, "
-            "they may no longer be globally optimal — but they are a fixed, realistic measuring "
-            "stick. After applying FE recommendations, re-run §3 History in the main notebook "
-            "for fresh full model Optuna.\n",
+            "Column names (e.g. `activity_logsum_roll3_mean`) are unchanged regardless of tuned window size.\n",
         ],
     },
     {
@@ -67,12 +63,13 @@ cells = [
             "    HISTORY_PROXY_PARAMS,\n",
             "    HISTORY_TUNING_TRIALS,\n",
             "    N_CV_FOLDS,\n",
-            "    ROLLING_WINDOW,\n",
+            "    ROLLING_WINDOWS,\n",
             ")\n",
             "from modeling.data import load_fatigue_data, prepare_splits, split_summary_table\n",
             "from modeling.history_tuning import (\n",
             "    cv_mae_with_history,\n",
             "    prepare_tuned_bundle,\n",
+            "    rolling_windows_from_construction_params,\n",
             "    run_forward_selection,\n",
             "    run_leave_one_out_ablation,\n",
             "    summarize_history_recommendation,\n",
@@ -99,7 +96,8 @@ cells = [
             "display(split_summary_table(bundle))\n",
             "print('Proxy model:', HISTORY_ABLATION_MODEL)\n",
             "print('Proxy params:', HISTORY_PROXY_PARAMS)\n",
-            "print('Default construction:', f'ewma_alpha={EWMA_ALPHA}', f'rolling_window={ROLLING_WINDOW}')\n",
+            "print('Default construction: ewma_alpha=', EWMA_ALPHA)\n",
+            "print('Default rolling windows:', ROLLING_WINDOWS)\n",
         ],
     },
     {
@@ -108,7 +106,8 @@ cells = [
         "source": [
             "## 1. Tune history construction\n",
             "\n",
-            "Optuna search over `ewma_alpha` ∈ [0.1, 0.5] and `rolling_window` ∈ {2, 3, 5, 7}. "
+            "Optuna search over `ewma_alpha` ∈ [0.1, 0.5] and, **independently for each rolling column**, "
+            "`activity_roll_window`, `calories_roll_window`, and `very_roll_window` ∈ {2, 3, 5, 7}. "
             "All 7 history columns are included. The proxy model is `catboost_ordinal` with fixed "
             "`HISTORY_PROXY_PARAMS` (no model Optuna here).\n",
         ],
@@ -127,7 +126,7 @@ cells = [
             "    bundle.groups_train_val,\n",
             "    model_name=HISTORY_ABLATION_MODEL,\n",
             "    ewma_alpha=EWMA_ALPHA,\n",
-            "    rolling_window=ROLLING_WINDOW,\n",
+            "    rolling_windows=ROLLING_WINDOWS,\n",
             "    history_cols=list(HISTORY_FEATURES),\n",
             "    n_splits=N_CV_FOLDS,\n",
             "    test_ids=bundle.test_ids,\n",
@@ -142,8 +141,13 @@ cells = [
             "    n_splits=N_CV_FOLDS,\n",
             ")\n",
             "best_alpha = construction_result['best_params']['ewma_alpha']\n",
-            "best_window = int(construction_result['best_params']['rolling_window'])\n",
-            "print(f\"Best construction: ewma_alpha={best_alpha:.4f}, rolling_window={best_window}\")\n",
+            "best_rolling_windows = rolling_windows_from_construction_params(\n",
+            "    construction_result['best_params']\n",
+            ")\n",
+            "print(f'Best construction: ewma_alpha={best_alpha:.4f}')\n",
+            "print('Best rolling windows:')\n",
+            "for col, window in best_rolling_windows.items():\n",
+            "    print(f'  {col}: {window}')\n",
             "print(f\"Tuned CV MAE: {construction_result['best_cv_mae']:.4f}\")\n",
             "print(f\"Delta vs default: {construction_result['best_cv_mae'] - default_cv_mae:+.4f}\")\n",
         ],
@@ -159,8 +163,6 @@ cells = [
             "- **Forward selection:** start from base features only; greedily add columns while CV MAE improves.\n",
             "\n",
             "Same proxy model and fixed `HISTORY_PROXY_PARAMS` as §1.\n",
-            "\n",
-            "Rolling column names (e.g. `activity_logsum_roll3_mean`) are unchanged when `rolling_window != 3`.\n",
         ],
     },
     {
@@ -169,13 +171,13 @@ cells = [
         "execution_count": None,
         "outputs": [],
         "source": [
-            "tuned_bundle = prepare_tuned_bundle(df, best_alpha, best_window)\n",
+            "tuned_bundle = prepare_tuned_bundle(df, best_alpha, rolling_windows=best_rolling_windows)\n",
             "\n",
             "all_features_cv_mae, feature_importance = run_leave_one_out_ablation(\n",
             "    df,\n",
             "    tuned_bundle,\n",
             "    ewma_alpha=best_alpha,\n",
-            "    rolling_window=best_window,\n",
+            "    rolling_windows=best_rolling_windows,\n",
             "    model_name=HISTORY_ABLATION_MODEL,\n",
             "    n_splits=N_CV_FOLDS,\n",
             ")\n",
@@ -194,7 +196,7 @@ cells = [
             "    df,\n",
             "    tuned_bundle,\n",
             "    ewma_alpha=best_alpha,\n",
-            "    rolling_window=best_window,\n",
+            "    rolling_windows=best_rolling_windows,\n",
             "    model_name=HISTORY_ABLATION_MODEL,\n",
             "    n_splits=N_CV_FOLDS,\n",
             ")\n",
@@ -238,7 +240,7 @@ cells = [
             "    tuned_bundle.y_ord_test,\n",
             "    model_name=HISTORY_ABLATION_MODEL,\n",
             "    ewma_alpha=best_alpha,\n",
-            "    rolling_window=best_window,\n",
+            "    rolling_windows=best_rolling_windows,\n",
             "    history_cols=forward_selected,\n",
             ")\n",
             "print(f'Proxy test MAE (recommended config): {test_mae:.4f}')\n",
@@ -254,7 +256,11 @@ cells = [
             "\n",
             "```python\n",
             "EWMA_ALPHA = ...        # from recommendation['ewma_alpha']\n",
-            "ROLLING_WINDOW = ...    # from recommendation['rolling_window']\n",
+            "ROLLING_WINDOWS = {       # from recommendation['rolling_windows']\n",
+            "    'activity_logsum_roll3_mean': ...,\n",
+            "    'calories_sum_roll3_mean': ...,\n",
+            "    'very_roll3_mean': ...,\n",
+            "}\n",
             "HISTORY_FEATURES = [    # from recommendation['history_features']\n",
             "    ...,\n",
             "]\n",
@@ -272,7 +278,10 @@ cells = [
         "source": [
             "print('Suggested config.py updates:')\n",
             "print(f'EWMA_ALPHA = {recommendation[\"ewma_alpha\"]:.6f}')\n",
-            "print(f'ROLLING_WINDOW = {recommendation[\"rolling_window\"]}')\n",
+            "print('ROLLING_WINDOWS = {')\n",
+            "for col, window in recommendation['rolling_windows'].items():\n",
+            "    print(f'    \"{col}\": {window},')\n",
+            "print('}')\n",
             "print('HISTORY_FEATURES = [')\n",
             "for feature in recommendation['history_features']:\n",
             "    print(f'    \"{feature}\",')\n",

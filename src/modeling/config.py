@@ -53,6 +53,17 @@ HISTORY_FEATURES = [
 
 EWMA_ALPHA = 0.3
 ROLLING_WINDOW = 3
+ROLLING_WINDOW_COLUMNS = [
+    "activity_logsum_roll3_mean",
+    "calories_sum_roll3_mean",
+    "very_roll3_mean",
+]
+ROLLING_WINDOWS = {col: ROLLING_WINDOW for col in ROLLING_WINDOW_COLUMNS}
+ROLLING_WINDOW_PARAM_NAMES = {
+    "activity_logsum_roll3_mean": "activity_roll_window",
+    "calories_sum_roll3_mean": "calories_roll_window",
+    "very_roll3_mean": "very_roll_window",
+}
 EWMA_ALPHA_RANGE = (0.1, 0.5)
 ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
 HISTORY_TUNING_TRIALS = 20

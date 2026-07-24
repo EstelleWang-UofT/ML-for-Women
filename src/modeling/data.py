@@ -16,10 +16,23 @@ from modeling.config import (
     PRIOR_COL,
     RANDOM_STATE,
     ROLLING_WINDOW,
+    ROLLING_WINDOW_COLUMNS,
+    ROLLING_WINDOWS,
     TEST_SIZE,
     TIME_COL,
     TIME_SERIES_GROUP_COLS,
 )
+
+
+def resolve_rolling_windows(rolling_windows=None, rolling_window=None):
+    """Return per-column rolling windows; accept legacy single int for all columns."""
+    if rolling_windows is not None:
+        return {
+            col: int(rolling_windows.get(col, ROLLING_WINDOW))
+            for col in ROLLING_WINDOW_COLUMNS
+        }
+    window = ROLLING_WINDOW if rolling_window is None else rolling_window
+    return {col: int(window) for col in ROLLING_WINDOW_COLUMNS}
 
 
 @dataclass
@@ -138,12 +151,14 @@ def build_split_bundle(
     train_val_mask,
     test_mask,
     ewma_alpha=EWMA_ALPHA,
+    rolling_windows=None,
     rolling_window=ROLLING_WINDOW,
 ):
     """Build feature matrices and targets from a preprocessed dataframe and split masks."""
+    windows = resolve_rolling_windows(rolling_windows, rolling_window)
     X_all = make_feature_matrix(df)
     X_all_history = make_feature_matrix_with_history(
-        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+        df, ewma_alpha=ewma_alpha, rolling_windows=windows
     )
 
     X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
@@ -309,13 +324,13 @@ def compute_history_features(
     time_col=TIME_COL,
     target_col="fatigue_num",
     ewma_alpha=None,
+    rolling_windows=None,
     rolling_window=None,
 ):
     """Return leakage-safe history columns aligned to df.index."""
     if ewma_alpha is None:
         ewma_alpha = EWMA_ALPHA
-    if rolling_window is None:
-        rolling_window = ROLLING_WINDOW
+    windows = resolve_rolling_windows(rolling_windows, rolling_window)
 
     activity_logsum = compute_log1p_activity_sum(df)
     work = pd.DataFrame(index=df.index)
@@ -330,15 +345,23 @@ def compute_history_features(
     work["activity_logsum_roll3_mean"] = compute_rolling_mean_prior(
         activity_df,
         "_activity_logsum",
-        rolling_window,
+        windows["activity_logsum_roll3_mean"],
         group_cols,
         time_col,
     )
     work["calories_sum_roll3_mean"] = compute_rolling_mean_prior(
-        df, "calories_sum", rolling_window, group_cols, time_col
+        df,
+        "calories_sum",
+        windows["calories_sum_roll3_mean"],
+        group_cols,
+        time_col,
     )
     work["very_roll3_mean"] = compute_rolling_mean_prior(
-        df, "very", rolling_window, group_cols, time_col
+        df,
+        "very",
+        windows["very_roll3_mean"],
+        group_cols,
+        time_col,
     )
     work["fatigue_delta_lag1"] = compute_fatigue_delta_lag1(
         df, group_cols, time_col, target_col
@@ -346,10 +369,15 @@ def compute_history_features(
     return work[HISTORY_FEATURES]
 
 
-def make_feature_matrix_with_history(data, ewma_alpha=None, rolling_window=None):
+def make_feature_matrix_with_history(
+    data, ewma_alpha=None, rolling_windows=None, rolling_window=None
+):
     X = make_feature_matrix(data)
     history = compute_history_features(
-        data, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+        data,
+        ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
+        rolling_window=rolling_window,
     )
     return pd.concat([X, history], axis=1)
 
@@ -359,11 +387,15 @@ def build_history_tree_matrices(
     train_val_mask,
     test_mask,
     ewma_alpha=None,
+    rolling_windows=None,
     rolling_window=None,
 ):
     """Build tree-encoded history feature matrices for train/val and test splits."""
     X_all_history = make_feature_matrix_with_history(
-        df, ewma_alpha=ewma_alpha, rolling_window=rolling_window
+        df,
+        ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
+        rolling_window=rolling_window,
     )
     X_train_val_history = X_all_history.loc[train_val_mask].reset_index(drop=True)
     X_test_history = X_all_history.loc[test_mask].reset_index(drop=True)
@@ -445,12 +477,11 @@ def prepare_splits(
     seed=RANDOM_STATE,
     stratify=True,
     ewma_alpha=None,
+    rolling_windows=None,
     rolling_window=None,
 ):
     if ewma_alpha is None:
         ewma_alpha = EWMA_ALPHA
-    if rolling_window is None:
-        rolling_window = ROLLING_WINDOW
 
     df = df.sort_values(TIME_SERIES_GROUP_COLS + [TIME_COL]).reset_index(drop=True)
 
@@ -475,6 +506,7 @@ def prepare_splits(
         train_val_mask,
         test_mask,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
     )
 

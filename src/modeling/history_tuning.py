@@ -19,6 +19,9 @@ from modeling.config import (
     RANDOM_STATE,
     ROLLING_WINDOW,
     ROLLING_WINDOW_CHOICES,
+    ROLLING_WINDOW_COLUMNS,
+    ROLLING_WINDOW_PARAM_NAMES,
+    ROLLING_WINDOWS,
 )
 from modeling.cv import evaluate_on_test, run_group_cv
 from modeling.data import (
@@ -27,6 +30,7 @@ from modeling.data import (
     make_feature_matrix,
     make_feature_matrix_with_history,
     prepare_splits,
+    resolve_rolling_windows,
 )
 from modeling.registry import (
     GROUPED_ORDINAL_MODELS,
@@ -49,15 +53,23 @@ def _default_model_params(model_name):
     return None
 
 
-def history_construction_search_space(trial):
-    """Optuna search space for ewma_alpha and rolling_window."""
-    low, high = EWMA_ALPHA_RANGE
+def rolling_windows_from_construction_params(params):
+    """Map Optuna construction params to per-column rolling windows."""
     return {
-        "ewma_alpha": trial.suggest_float("ewma_alpha", low, high, log=True),
-        "rolling_window": trial.suggest_categorical(
-            "rolling_window", list(ROLLING_WINDOW_CHOICES)
-        ),
+        col: int(params[ROLLING_WINDOW_PARAM_NAMES[col]]) for col in ROLLING_WINDOW_COLUMNS
     }
+
+
+def history_construction_search_space(trial):
+    """Optuna search space for ewma_alpha and per-column rolling windows."""
+    low, high = EWMA_ALPHA_RANGE
+    params = {"ewma_alpha": trial.suggest_float("ewma_alpha", low, high, log=True)}
+    for col in ROLLING_WINDOW_COLUMNS:
+        param_name = ROLLING_WINDOW_PARAM_NAMES[col]
+        params[param_name] = trial.suggest_categorical(
+            param_name, list(ROLLING_WINDOW_CHOICES)
+        )
+    return params
 
 
 def _resolve_model_matrix(name, X_raw, X_tree):
@@ -73,10 +85,12 @@ def build_history_matrices(
     train_val_mask,
     test_mask,
     ewma_alpha,
-    rolling_window,
+    rolling_windows=None,
+    rolling_window=None,
     history_cols=None,
 ):
     """Build imputed raw and tree matrices for a history configuration."""
+    windows = resolve_rolling_windows(rolling_windows, rolling_window)
     if history_cols is not None and len(history_cols) == 0:
         X_all = make_feature_matrix(df)
         X_train_val = X_all.loc[train_val_mask].reset_index(drop=True)
@@ -91,7 +105,7 @@ def build_history_matrices(
     X_all_history = make_feature_matrix_with_history(
         df,
         ewma_alpha=ewma_alpha,
-        rolling_window=rolling_window,
+        rolling_windows=windows,
     )
     X_train_val = X_all_history.loc[train_val_mask].reset_index(drop=True)
     X_test = X_all_history.loc[test_mask].reset_index(drop=True)
@@ -126,7 +140,8 @@ def cv_mae_with_history(
     groups,
     model_name,
     ewma_alpha,
-    rolling_window,
+    rolling_windows=None,
+    rolling_window=None,
     history_cols=None,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -146,6 +161,7 @@ def cv_mae_with_history(
         train_val_mask,
         test_mask,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
         history_cols=history_cols,
     )
@@ -177,7 +193,8 @@ def test_mae_with_history(
     y_test,
     model_name,
     ewma_alpha,
-    rolling_window,
+    rolling_windows=None,
+    rolling_window=None,
     history_cols=None,
     model_params=None,
 ):
@@ -195,6 +212,7 @@ def test_mae_with_history(
         train_val_mask,
         test_mask,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
         history_cols=history_cols,
     )
@@ -214,7 +232,7 @@ def tune_history_construction(
     n_splits=N_CV_FOLDS,
     seed=RANDOM_STATE,
 ):
-    """Optuna study over ewma_alpha and rolling_window (all history features)."""
+    """Optuna study over ewma_alpha and per-column rolling windows (all history features)."""
     del seed
     if model_params is None:
         model_params = _default_model_params(model_name)
@@ -234,7 +252,7 @@ def tune_history_construction(
             groups,
             model_name=model_name,
             ewma_alpha=params["ewma_alpha"],
-            rolling_window=params["rolling_window"],
+            rolling_windows=rolling_windows_from_construction_params(params),
             history_cols=list(HISTORY_FEATURES),
             model_params=model_params,
             n_splits=n_splits,
@@ -258,7 +276,8 @@ def run_leave_one_out_ablation(
     df,
     bundle,
     ewma_alpha,
-    rolling_window,
+    rolling_windows=None,
+    rolling_window=None,
     model_name=HISTORY_ABLATION_MODEL,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -283,6 +302,7 @@ def run_leave_one_out_ablation(
         groups,
         model_name=model_name,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
         history_cols=list(HISTORY_FEATURES),
         model_params=model_params,
@@ -301,6 +321,7 @@ def run_leave_one_out_ablation(
             groups,
             model_name=model_name,
             ewma_alpha=ewma_alpha,
+            rolling_windows=rolling_windows,
             rolling_window=rolling_window,
             history_cols=subset,
             model_params=model_params,
@@ -327,7 +348,8 @@ def run_forward_selection(
     df,
     bundle,
     ewma_alpha,
-    rolling_window,
+    rolling_windows=None,
+    rolling_window=None,
     model_name=HISTORY_ABLATION_MODEL,
     model_params=None,
     n_splits=N_CV_FOLDS,
@@ -353,6 +375,7 @@ def run_forward_selection(
         groups,
         model_name=model_name,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
         history_cols=[],
         model_params=model_params,
@@ -384,6 +407,7 @@ def run_forward_selection(
                 groups,
                 model_name=model_name,
                 ewma_alpha=ewma_alpha,
+                rolling_windows=rolling_windows,
                 rolling_window=rolling_window,
                 history_cols=trial_cols,
                 model_params=model_params,
@@ -423,16 +447,20 @@ def summarize_history_recommendation(
 ):
     """Combine construction tuning and ablation into one recommendation dict."""
     best_params = construction_result["best_params"]
+    best_rolling_windows = rolling_windows_from_construction_params(best_params)
     recommendation = {
         "ewma_alpha": best_params["ewma_alpha"],
-        "rolling_window": int(best_params["rolling_window"]),
+        "rolling_windows": best_rolling_windows,
         "history_features": list(forward_selected),
         "construction_cv_mae": construction_result["best_cv_mae"],
         "forward_selection_cv_mae": forward_cv_mae,
         "default_ewma_alpha": EWMA_ALPHA,
-        "default_rolling_window": ROLLING_WINDOW,
+        "default_rolling_windows": dict(ROLLING_WINDOWS),
         "default_history_features": list(HISTORY_FEATURES),
     }
+    for col in ROLLING_WINDOW_COLUMNS:
+        param_name = ROLLING_WINDOW_PARAM_NAMES[col]
+        recommendation[param_name] = best_rolling_windows[col]
     if default_cv_mae is not None:
         recommendation["default_construction_cv_mae"] = default_cv_mae
     if feature_importance is not None and not feature_importance.empty:
@@ -442,11 +470,18 @@ def summarize_history_recommendation(
     return recommendation
 
 
-def prepare_tuned_bundle(df, ewma_alpha, rolling_window, seed=RANDOM_STATE):
+def prepare_tuned_bundle(
+    df,
+    ewma_alpha,
+    rolling_windows=None,
+    rolling_window=None,
+    seed=RANDOM_STATE,
+):
     """Rebuild SplitBundle with tuned history construction params."""
     return prepare_splits(
         df,
         seed=seed,
         ewma_alpha=ewma_alpha,
+        rolling_windows=rolling_windows,
         rolling_window=rolling_window,
     )
