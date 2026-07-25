@@ -70,15 +70,15 @@ def collect_categorized_summaries(results):
 
 
 def build_history_ablation_summary(test_summary, model_names):
-    """Compare base vs 7-col history test MAE for each base model name.
+    """Compare base vs history test MAE for each base model name.
 
     Expects ``test_summary`` indexed by model name with a ``test_mae`` column
-    and companion rows named ``{base}_history7`` for each base in
+    and companion rows named ``{base}_history`` for each base in
     ``model_names``.
     """
     rows = []
     for base in model_names:
-        hist = f"{base}_history7"
+        hist = f"{base}_history"
         if base not in test_summary.index or hist not in test_summary.index:
             continue
         base_mae = test_summary.loc[base, "test_mae"]
@@ -87,7 +87,7 @@ def build_history_ablation_summary(test_summary, model_names):
             {
                 "model": base,
                 "test_mae_base": base_mae,
-                "test_mae_history7": history_mae,
+                "test_mae_history": history_mae,
                 "delta_mae": history_mae - base_mae,
             }
         )
