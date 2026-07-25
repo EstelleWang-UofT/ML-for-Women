@@ -10,6 +10,7 @@ from modeling.config import (
     DATA_PATH,
     EWMA_ALPHA,
     FEATURE_COLUMNS,
+    HISTORY_CANDIDATE_FEATURES,
     HISTORY_FEATURES,
     NUMERIC_FEATURES,
     PHASE_ORDER,
@@ -338,31 +339,24 @@ def compute_history_features(
         df, ewma_alpha, group_cols, time_col, target_col
     )
     activity_df = df.assign(_activity_logsum=activity_logsum)
-    work["activity_logsum_roll3_mean"] = compute_rolling_mean_prior(
-        activity_df,
-        "_activity_logsum",
-        windows["activity_logsum_roll3_mean"],
-        group_cols,
-        time_col,
-    )
-    work["calories_sum_roll3_mean"] = compute_rolling_mean_prior(
-        df,
-        "calories_sum",
-        windows["calories_sum_roll3_mean"],
-        group_cols,
-        time_col,
-    )
-    work["very_roll3_mean"] = compute_rolling_mean_prior(
-        df,
-        "very",
-        windows["very_roll3_mean"],
-        group_cols,
-        time_col,
-    )
+    rolling_mean_sources = {
+        "activity_logsum_roll_mean": (activity_df, "_activity_logsum"),
+        "calories_sum_roll_mean": (df, "calories_sum"),
+        "very_roll_mean": (df, "very"),
+    }
+    for col in ROLLING_WINDOW_COLUMNS:
+        source_df, source_col = rolling_mean_sources[col]
+        work[col] = compute_rolling_mean_prior(
+            source_df,
+            source_col,
+            windows[col],
+            group_cols,
+            time_col,
+        )
     work["fatigue_delta_lag1"] = compute_fatigue_delta_lag1(
         df, group_cols, time_col, target_col
     )
-    return work[HISTORY_FEATURES]
+    return work[HISTORY_CANDIDATE_FEATURES]
 
 
 def make_feature_matrix_with_history(data, ewma_alpha=None, rolling_windows=None):
@@ -420,7 +414,7 @@ def _subset_history_columns(X_train_val, X_test, history_cols):
         return X_train_val, X_test
     drop = [
         col
-        for col in HISTORY_FEATURES
+        for col in HISTORY_CANDIDATE_FEATURES
         if col in X_train_val.columns and col not in history_cols
     ]
     if not drop:

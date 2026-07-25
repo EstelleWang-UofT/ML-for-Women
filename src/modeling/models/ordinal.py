@@ -19,7 +19,7 @@ import statsmodels.api as sm
 
 from modeling.config import (
     CATEGORICAL_FEATURES,
-    HISTORY_FEATURES,
+    HISTORY_CANDIDATE_FEATURES,
     NUMERIC_FEATURES,
     PHASE_TO_IDX,
     RANDOM_STATE,
@@ -39,7 +39,7 @@ NUM_ORDINAL_THRESHOLDS = NUM_ORDINAL_CLASSES - 1
 
 
 def _history_columns_in(X):
-    return [col for col in HISTORY_FEATURES if col in X.columns]
+    return [col for col in HISTORY_CANDIDATE_FEATURES if col in X.columns]
 
 
 def _has_history_features(X):
@@ -356,7 +356,7 @@ class PopulationOrderedLogisticModel(BaseEstimator, ClassifierMixin):
                 exog[col] = X["phase"].astype(str).map(PHASE_TO_IDX).fillna(0).astype(float)
             else:
                 exog[col] = pd.to_numeric(X[col], errors="coerce").astype(float)
-        history_cols = [col for col in HISTORY_FEATURES if col in X.columns]
+        history_cols = [col for col in HISTORY_CANDIDATE_FEATURES if col in X.columns]
         if history_cols:
             exog = pd.concat(
                 [exog, X[history_cols].apply(pd.to_numeric, errors="coerce").astype(float)],

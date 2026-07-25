@@ -12,12 +12,15 @@ def tune_and_benchmark_model(
     registry,
     feature_set="base",
     display_name=None,
+    history_cols=None,
     n_trials=OPTUNA_TRIALS,
     n_splits=N_CV_FOLDS,
     params=None,
 ):
     """Tune (optional) + GroupKFold benchmark + test eval for one model."""
-    data_kwargs = resolve_training_data(name, bundle, feature_set=feature_set)
+    data_kwargs = resolve_training_data(
+        name, bundle, feature_set=feature_set, history_cols=history_cols
+    )
     cv_score = None
 
     if params is None:
@@ -54,4 +57,5 @@ def tune_and_benchmark_model(
     result["best_params"] = params
     result["best_cv_score"] = cv_score
     result["feature_set"] = feature_set
+    result["history_cols"] = history_cols
     return result, params

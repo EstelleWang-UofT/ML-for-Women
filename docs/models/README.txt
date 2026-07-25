@@ -59,22 +59,27 @@ Phase order: Menstrual, Follicular, Fertility, Luteal
 History features (HISTORY_FEATURES — past days only, per participant wave;
   grouped by id and study_interval):
   fatigue_ewma, fatigue_expanding_mean, fatigue_lag1
-  (Rolling-mean columns activity_logsum_roll3_mean, calories_sum_roll3_mean,
-  very_roll3_mean are still computed when tuning construction but may be omitted
+  (Rolling-mean columns activity_logsum_roll_mean, calories_sum_roll_mean,
+  very_roll_mean are still computed when tuning construction but may be omitted
   from HISTORY_FEATURES after ablation.)
 
 Constants: EWMA_ALPHA, ROLLING_WINDOWS (per rolling-mean column),
-  EWMA_ALPHA_RANGE=(0.1, 0.5), ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
-  HISTORY_TUNING_TRIALS=20, HISTORY_ABLATION_MODEL=catboost_ordinal,
-  HISTORY_PROXY_PARAMS (Optuna best from catboost_ordinal_history in main notebook §3 History),
+  EWMA_ALPHA_RANGE=(0.1, 0.5), EWMA_ALPHA_GRID (10 log-spaced alphas),
+  ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
+  HISTORY_TUNING_TRIALS=20 (legacy Optuna helper only),
+  HISTORY_ABLATION_MODEL=catboost_ordinal,
+  HISTORY_PROXY_PARAMS (fixed proxy from catboost_ordinal_history in main notebook §3 History),
   PRIOR_COL="__prior__"
 
 History feature engineering (standalone notebook):
   notebooks/physical activity/history feature engineering.ipynb
   Proxy model: catboost_ordinal with fixed HISTORY_PROXY_PARAMS (no model Optuna in notebook).
-  Stage 1: Optuna tune ewma_alpha + per-column rolling windows (CV on train/val, proxy model).
-  Stage 2: leave-one-out + forward selection over HISTORY_FEATURES.
+  Stage 1: exhaustive grid over ewma_alpha (EWMA_ALPHA_GRID) x all rolling-window combos
+    (4^3=64 per alpha, 640 configs total) with CV on train/val, proxy model.
+  Stage 2: leave-one-out + forward selection over HISTORY_CANDIDATE_FEATURES.
   Apply recommended values manually to config.py before re-running main notebook §3 History.
+  When history FE §1 finds new optimal windows, update ROLLING_WINDOWS values only
+  (column names are window-agnostic *_roll_mean).
 
 
 TRAIN / TEST SPLIT

@@ -1,5 +1,7 @@
 """Configuration constants for fatigue modeling."""
 
+import numpy as np
+
 DATA_PATH = "mcphases/merged/physical_activity_merged_processed.csv"
 
 NUMERIC_FEATURES = [
@@ -41,6 +43,17 @@ GEE_OPTUNA_TRIALS = 10
 
 ORDINAL_METRIC = "mae"
 
+HISTORY_CANDIDATE_FEATURES = [
+    "fatigue_lag1",
+    "fatigue_expanding_mean",
+    "fatigue_ewma",
+    "activity_logsum_roll_mean",
+    "calories_sum_roll_mean",
+    "very_roll_mean",
+    "fatigue_delta_lag1",
+]
+
+# FE forward-selection subset; use HISTORY_CANDIDATE_FEATURES for full history runs.
 HISTORY_FEATURES = [
     "fatigue_ewma",
     "fatigue_expanding_mean",
@@ -48,22 +61,24 @@ HISTORY_FEATURES = [
 ]
 
 EWMA_ALPHA = 0.366976
+# Window length per rolling column is in ROLLING_WINDOWS; column names are window-agnostic.
 ROLLING_WINDOW_COLUMNS = [
-    "activity_logsum_roll3_mean",
-    "calories_sum_roll3_mean",
-    "very_roll3_mean",
+    "activity_logsum_roll_mean",
+    "calories_sum_roll_mean",
+    "very_roll_mean",
 ]
 ROLLING_WINDOWS = {
-    "activity_logsum_roll3_mean": 2,
-    "calories_sum_roll3_mean": 2,
-    "very_roll3_mean": 5,
+    "activity_logsum_roll_mean": 2,
+    "calories_sum_roll_mean": 2,
+    "very_roll_mean": 5,
 }
 ROLLING_WINDOW_PARAM_NAMES = {
-    "activity_logsum_roll3_mean": "activity_roll_window",
-    "calories_sum_roll3_mean": "calories_roll_window",
-    "very_roll3_mean": "very_roll_window",
+    "activity_logsum_roll_mean": "activity_roll_window",
+    "calories_sum_roll_mean": "calories_roll_window",
+    "very_roll_mean": "very_roll_window",
 }
 EWMA_ALPHA_RANGE = (0.1, 0.5)
+EWMA_ALPHA_GRID = np.geomspace(EWMA_ALPHA_RANGE[0], EWMA_ALPHA_RANGE[1], 10).tolist()
 ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
 HISTORY_TUNING_TRIALS = 20
 HISTORY_ABLATION_MODEL = "catboost_ordinal"

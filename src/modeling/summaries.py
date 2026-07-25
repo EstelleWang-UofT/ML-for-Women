@@ -48,7 +48,7 @@ def model_category(name: str) -> str:
     """Classify a benchmark result name into baseline, base, or history."""
     if name in ORDINAL_BASELINES:
         return "baseline"
-    if name.endswith("_history"):
+    if name.endswith(("_history", "_history7", "_history3")):
         return "history"
     if name in ORDINAL_MODELS:
         return "base"
@@ -70,15 +70,15 @@ def collect_categorized_summaries(results):
 
 
 def build_history_ablation_summary(test_summary, model_names):
-    """Compare base vs history test MAE for each base model name.
+    """Compare base vs 7-col history test MAE for each base model name.
 
     Expects ``test_summary`` indexed by model name with a ``test_mae`` column
-    and companion rows named ``{base}_history`` for each base in
+    and companion rows named ``{base}_history7`` for each base in
     ``model_names``.
     """
     rows = []
     for base in model_names:
-        hist = f"{base}_history"
+        hist = f"{base}_history7"
         if base not in test_summary.index or hist not in test_summary.index:
             continue
         base_mae = test_summary.loc[base, "test_mae"]
@@ -87,10 +87,33 @@ def build_history_ablation_summary(test_summary, model_names):
             {
                 "model": base,
                 "test_mae_base": base_mae,
-                "test_mae_history": history_mae,
+                "test_mae_history7": history_mae,
                 "delta_mae": history_mae - base_mae,
             }
         )
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows).set_index("model").sort_values("delta_mae")
+
+
+def build_history_feature_count_comparison(test_summary, model_names):
+    """Compare 3-col vs 7-col history test MAE for each base model name."""
+    rows = []
+    for base in model_names:
+        hist7 = f"{base}_history7"
+        hist3 = f"{base}_history3"
+        if hist7 not in test_summary.index or hist3 not in test_summary.index:
+            continue
+        mae7 = test_summary.loc[hist7, "test_mae"]
+        mae3 = test_summary.loc[hist3, "test_mae"]
+        rows.append(
+            {
+                "model": base,
+                "test_mae_history7": mae7,
+                "test_mae_history3": mae3,
+                "delta_mae_3_minus_7": mae3 - mae7,
+            }
+        )
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).set_index("model").sort_values("delta_mae_3_minus_7")

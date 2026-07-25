@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import warnings
 
 import optuna
@@ -9,8 +10,10 @@ import pandas as pd
 
 from modeling.config import (
     EWMA_ALPHA,
+    EWMA_ALPHA_GRID,
     EWMA_ALPHA_RANGE,
     HISTORY_ABLATION_MODEL,
+    HISTORY_CANDIDATE_FEATURES,
     HISTORY_FEATURES,
     HISTORY_PROXY_PARAMS,
     HISTORY_TUNING_TRIALS,
@@ -70,6 +73,134 @@ def history_construction_search_space(trial):
     return params
 
 
+def history_construction_grid(alpha_values=None, rolling_choices=None):
+    """Yield all construction param dicts for exhaustive grid search."""
+    alphas = list(EWMA_ALPHA_GRID if alpha_values is None else alpha_values)
+    choices = list(ROLLING_WINDOW_CHOICES if rolling_choices is None else rolling_choices)
+    param_names = [ROLLING_WINDOW_PARAM_NAMES[col] for col in ROLLING_WINDOW_COLUMNS]
+    n_rolling = len(ROLLING_WINDOW_COLUMNS)
+    for ewma_alpha in alphas:
+        for window_combo in itertools.product(choices, repeat=n_rolling):
+            params = {"ewma_alpha": float(ewma_alpha)}
+            for param_name, window in zip(param_names, window_combo):
+                params[param_name] = int(window)
+            yield params
+
+
+def exhaustive_tune_history_construction(
+    df,
+    bundle,
+    model_name=HISTORY_ABLATION_MODEL,
+    model_params=None,
+    n_splits=N_CV_FOLDS,
+    alpha_values=None,
+    rolling_choices=None,
+    show_progress=True,
+    progress_every=50,
+):
+    """Exhaustive grid over ewma_alpha and per-column rolling windows (all history features)."""
+    if model_params is None:
+        model_params = _default_model_params(model_name)
+    train_val_mask = bundle.train_val_mask
+    test_mask = bundle.test_mask
+    y_train_val = bundle.y_ord_train_val
+    groups = bundle.groups_train_val
+    test_ids = bundle.test_ids
+
+    grid = list(history_construction_grid(alpha_values, rolling_choices))
+    rows = []
+    best_params = None
+    best_cv_mae = float("inf")
+
+    for idx, params in enumerate(grid, start=1):
+        cv_mae = cv_mae_with_history(
+            df,
+            train_val_mask,
+            test_mask,
+            y_train_val,
+            groups,
+            model_name=model_name,
+            ewma_alpha=params["ewma_alpha"],
+            rolling_windows=rolling_windows_from_construction_params(params),
+            history_cols=list(HISTORY_CANDIDATE_FEATURES),
+            model_params=model_params,
+            n_splits=n_splits,
+            test_ids=test_ids,
+        )
+        row = {"eval_index": idx, "ewma_alpha": params["ewma_alpha"], "cv_mae": cv_mae}
+        for col in ROLLING_WINDOW_COLUMNS:
+            param_name = ROLLING_WINDOW_PARAM_NAMES[col]
+            row[param_name] = params[param_name]
+        rows.append(row)
+        if cv_mae < best_cv_mae:
+            best_cv_mae = cv_mae
+            best_params = dict(params)
+        if show_progress and (idx == 1 or idx == len(grid) or idx % progress_every == 0):
+            print(f"  [{idx}/{len(grid)}] best cv_mae so far: {best_cv_mae:.4f}")
+
+    grid_results = pd.DataFrame(rows)
+    return {
+        "best_params": best_params,
+        "best_cv_mae": best_cv_mae,
+        "grid_results": grid_results,
+        "n_evaluated": len(grid),
+    }
+
+
+def plot_history_construction_grid_mae(
+    grid_results,
+    best_cv_mae=None,
+    ax=None,
+    figsize=(10, 4),
+):
+    """Line plot of CV MAE vs grid evaluation order; highlight global minimum."""
+    import matplotlib.pyplot as plt
+
+    if grid_results.empty:
+        raise ValueError("grid_results is empty")
+
+    if "eval_index" in grid_results.columns:
+        x = grid_results["eval_index"]
+    else:
+        x = range(1, len(grid_results) + 1)
+    y = grid_results["cv_mae"]
+
+    if best_cv_mae is None:
+        best_cv_mae = float(y.min())
+    min_idx = y.idxmin()
+    min_x = x.loc[min_idx] if hasattr(x, "loc") else list(x)[min_idx]
+    min_y = float(y.loc[min_idx])
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=figsize)
+
+    ax.plot(x, y, color="steelblue", linewidth=0.8, alpha=0.7, label="CV MAE")
+    ax.axhline(best_cv_mae, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax.scatter(
+        [min_x],
+        [min_y],
+        color="crimson",
+        s=80,
+        zorder=5,
+        label=f"Best MAE = {min_y:.4f} (eval {int(min_x)})",
+    )
+    ax.annotate(
+        f"{min_y:.4f}",
+        (min_x, min_y),
+        textcoords="offset points",
+        xytext=(6, 6),
+        fontsize=9,
+        color="crimson",
+    )
+    ax.set_xlabel("Grid evaluation index")
+    ax.set_ylabel("CV MAE")
+    ax.set_title("History construction grid search")
+    ax.legend(loc="upper right", fontsize=9)
+    ax.grid(True, alpha=0.3)
+    fig = ax.figure
+    return fig, ax
+
+
 def _resolve_model_matrix(name, X_raw, X_tree):
     if name in TREE_ORDINAL_MODELS:
         return X_tree
@@ -106,7 +237,7 @@ def build_history_matrices(
     )
     X_train_val = X_all_history.loc[train_val_mask].reset_index(drop=True)
     X_test = X_all_history.loc[test_mask].reset_index(drop=True)
-    impute_cols = history_cols if history_cols is not None else HISTORY_FEATURES
+    impute_cols = history_cols if history_cols is not None else HISTORY_CANDIDATE_FEATURES
     X_train_val, X_test = impute_history_features(
         X_train_val,
         X_test,
@@ -115,7 +246,7 @@ def build_history_matrices(
     if history_cols is not None:
         drop = [
             col
-            for col in HISTORY_FEATURES
+            for col in HISTORY_CANDIDATE_FEATURES
             if col in X_train_val.columns and col not in history_cols
         ]
         if drop:
@@ -246,7 +377,7 @@ def tune_history_construction(
             model_name=model_name,
             ewma_alpha=params["ewma_alpha"],
             rolling_windows=rolling_windows_from_construction_params(params),
-            history_cols=list(HISTORY_FEATURES),
+            history_cols=list(HISTORY_CANDIDATE_FEATURES),
             model_params=model_params,
             n_splits=n_splits,
             test_ids=test_ids,
@@ -295,15 +426,15 @@ def run_leave_one_out_ablation(
         model_name=model_name,
         ewma_alpha=ewma_alpha,
         rolling_windows=rolling_windows,
-        history_cols=list(HISTORY_FEATURES),
+        history_cols=list(HISTORY_CANDIDATE_FEATURES),
         model_params=model_params,
         n_splits=n_splits,
         test_ids=test_ids,
     )
 
     rows = []
-    for feature in HISTORY_FEATURES:
-        subset = [col for col in HISTORY_FEATURES if col != feature]
+    for feature in HISTORY_CANDIDATE_FEATURES:
+        subset = [col for col in HISTORY_CANDIDATE_FEATURES if col != feature]
         cv_mae_without_feature = cv_mae_with_history(
             df,
             train_val_mask,
@@ -353,7 +484,7 @@ def run_forward_selection(
     test_ids = bundle.test_ids
 
     selected = []
-    remaining = list(HISTORY_FEATURES)
+    remaining = list(HISTORY_CANDIDATE_FEATURES)
     path_rows = []
 
     base_mae = cv_mae_with_history(
