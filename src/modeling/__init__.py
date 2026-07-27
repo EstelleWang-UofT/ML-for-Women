@@ -31,7 +31,10 @@ from modeling.data import (
 from modeling.metrics import compute_metrics
 from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
 from modeling.registry import ORDINAL_MODELS, get_search_space
-from modeling.runner import tune_and_benchmark_model
+from modeling.significance import (
+    compare_history_feature_count_significance,
+    paired_participant_significance_test,
+)
 from modeling.summaries import (
     CATEGORY_ORDER,
     build_history_ablation_summary,
@@ -73,6 +76,7 @@ __all__ = [
     "build_split_bundle",
     "collect_categorized_summaries",
     "collect_summaries",
+    "compare_history_feature_count_significance",
     "compute_metrics",
     "evaluate_on_test",
     "exhaustive_tune_history_construction",
@@ -80,6 +84,7 @@ __all__ = [
     "load_fatigue_data",
     "participant_strata",
     "plot_history_construction_grid_mae",
+    "paired_participant_significance_test",
     "preprocess_after_split",
     "prepare_splits",
     "prepare_tuned_bundle",

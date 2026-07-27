@@ -60,7 +60,8 @@ HISTORY_FEATURES = [
     "fatigue_lag1",
 ]
 
-EWMA_ALPHA = 0.366976
+# Best construction from history feature engineering.ipynb §1 exhaustive grid search.
+EWMA_ALPHA = 0.349658
 # Window length per rolling column is in ROLLING_WINDOWS; column names are window-agnostic.
 ROLLING_WINDOW_COLUMNS = [
     "activity_logsum_roll_mean",
@@ -70,7 +71,7 @@ ROLLING_WINDOW_COLUMNS = [
 ROLLING_WINDOWS = {
     "activity_logsum_roll_mean": 2,
     "calories_sum_roll_mean": 2,
-    "very_roll_mean": 5,
+    "very_roll_mean": 3,
 }
 ROLLING_WINDOW_PARAM_NAMES = {
     "activity_logsum_roll_mean": "activity_roll_window",
