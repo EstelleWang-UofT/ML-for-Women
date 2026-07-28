@@ -66,9 +66,8 @@ History features (HISTORY_FEATURES — past days only, per participant wave;
 Constants: EWMA_ALPHA, ROLLING_WINDOWS (per rolling-mean column),
   EWMA_ALPHA_RANGE=(0.1, 0.5), EWMA_ALPHA_GRID (10 log-spaced alphas),
   ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
-  HISTORY_TUNING_TRIALS=20 (legacy Optuna helper only),
   HISTORY_ABLATION_MODEL=catboost_ordinal,
-  HISTORY_PROXY_PARAMS (fixed proxy from catboost_ordinal_history in main notebook §3 History),
+  HISTORY_PROXY_PARAMS (fixed catboost_ordinal proxy for history FE notebook grid/ablation),
   PRIOR_COL="__prior__"
 
 History feature engineering (standalone notebook):

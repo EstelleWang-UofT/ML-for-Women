@@ -11,7 +11,6 @@ from modeling.config import (
     HISTORY_CANDIDATE_FEATURES,
     HISTORY_FEATURES,
     HISTORY_PROXY_PARAMS,
-    HISTORY_TUNING_TRIALS,
     N_CV_FOLDS,
     NUMERIC_FEATURES,
     OPTUNA_TRIALS,
@@ -50,7 +49,6 @@ from modeling.history_tuning import (
     run_leave_one_out_ablation,
     summarize_history_recommendation,
     test_mae_with_history,
-    tune_history_construction,
 )
 
 __all__ = [
@@ -63,7 +61,6 @@ __all__ = [
     "EWMA_ALPHA_GRID",
     "HISTORY_FEATURES",
     "HISTORY_PROXY_PARAMS",
-    "HISTORY_TUNING_TRIALS",
     "N_CV_FOLDS",
     "NUMERIC_FEATURES",
     "OPTUNA_TRIALS",
@@ -99,6 +96,5 @@ __all__ = [
     "summarize_history_recommendation",
     "test_mae_with_history",
     "tune_and_benchmark_model",
-    "tune_history_construction",
     "tune_model",
 ]

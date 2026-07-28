@@ -11,13 +11,16 @@
 
 ## Data pipeline (notebooks)
 
-Notebooks live under `notebooks/`:
+Notebooks live under `notebooks/physical activity/`:
 
 | Notebook | Purpose |
 |----------|---------|
-| `notebooks/physical activity/preprocessing and merging.ipynb` | Merge raw mcPHASES physical-activity tables |
-| `notebooks/physical activity/merged preprocess.ipynb` | Clean, transform, export processed CSV |
-| `notebooks/physical activity/fatigue_modeling.ipynb` | Train/tune ordinal fatigue models |
+| `0 target_identification.ipynb` | Target variable selection |
+| `1 preprocessing and merging.ipynb` | Merge raw mcPHASES physical-activity tables |
+| `2 merged preprocess.ipynb` | Clean, transform, export processed CSV |
+| `history feature engineering.ipynb` | Tune history construction; forward-select `HISTORY_FEATURES` |
+| `3 fatigue_modeling.ipynb` | Train/tune ordinal models (base + 3 history features) |
+| `3.5 history features.ipynb` | Archived 3-col vs 7-col history comparison and significance |
 
 **Processed modeling CSV:** `mcphases/merged/physical_activity_merged_processed.csv`
 

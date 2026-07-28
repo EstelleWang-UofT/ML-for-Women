@@ -81,11 +81,9 @@ ROLLING_WINDOW_PARAM_NAMES = {
 EWMA_ALPHA_RANGE = (0.1, 0.5)
 EWMA_ALPHA_GRID = np.geomspace(EWMA_ALPHA_RANGE[0], EWMA_ALPHA_RANGE[1], 10).tolist()
 ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
-HISTORY_TUNING_TRIALS = 20
 HISTORY_ABLATION_MODEL = "catboost_ordinal"
 
-# Optuna best from 3 fatigue_modeling.ipynb §3 catboost_ordinal_history
-# (default history construction; update after re-tuning main notebook)
+# Fixed proxy hyperparams for history FE notebook grid search and ablation (not full model Optuna).
 HISTORY_PROXY_PARAMS = {
     "iterations": 366,
     "depth": 4,

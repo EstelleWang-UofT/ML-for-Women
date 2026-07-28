@@ -5,18 +5,15 @@ from __future__ import annotations
 import itertools
 import warnings
 
-import optuna
 import pandas as pd
 
 from modeling.config import (
     EWMA_ALPHA,
     EWMA_ALPHA_GRID,
-    EWMA_ALPHA_RANGE,
     HISTORY_ABLATION_MODEL,
     HISTORY_CANDIDATE_FEATURES,
     HISTORY_FEATURES,
     HISTORY_PROXY_PARAMS,
-    HISTORY_TUNING_TRIALS,
     N_CV_FOLDS,
     ORDINAL_METRIC,
     RANDOM_STATE,
@@ -59,18 +56,6 @@ def rolling_windows_from_construction_params(params):
     return {
         col: int(params[ROLLING_WINDOW_PARAM_NAMES[col]]) for col in ROLLING_WINDOW_COLUMNS
     }
-
-
-def history_construction_search_space(trial):
-    """Optuna search space for ewma_alpha and per-column rolling windows."""
-    low, high = EWMA_ALPHA_RANGE
-    params = {"ewma_alpha": trial.suggest_float("ewma_alpha", low, high, log=True)}
-    for col in ROLLING_WINDOW_COLUMNS:
-        param_name = ROLLING_WINDOW_PARAM_NAMES[col]
-        params[param_name] = trial.suggest_categorical(
-            param_name, list(ROLLING_WINDOW_CHOICES)
-        )
-    return params
 
 
 def history_construction_grid(alpha_values=None, rolling_choices=None):
@@ -345,55 +330,6 @@ def test_mae_with_history(
     factory = make_model_factory(model_name, params, ORDINAL_MODELS)
     metrics, _ = evaluate_on_test(factory, X_train, y_train_val, X_test, y_test)
     return float(metrics[ORDINAL_METRIC])
-
-
-def tune_history_construction(
-    df,
-    bundle,
-    model_name=HISTORY_ABLATION_MODEL,
-    model_params=None,
-    n_trials=HISTORY_TUNING_TRIALS,
-    n_splits=N_CV_FOLDS,
-    seed=RANDOM_STATE,
-):
-    """Optuna study over ewma_alpha and per-column rolling windows (all history features)."""
-    del seed
-    if model_params is None:
-        model_params = _default_model_params(model_name)
-    train_val_mask = bundle.train_val_mask
-    test_mask = bundle.test_mask
-    y_train_val = bundle.y_ord_train_val
-    groups = bundle.groups_train_val
-    test_ids = bundle.test_ids
-
-    def objective(trial):
-        params = history_construction_search_space(trial)
-        return cv_mae_with_history(
-            df,
-            train_val_mask,
-            test_mask,
-            y_train_val,
-            groups,
-            model_name=model_name,
-            ewma_alpha=params["ewma_alpha"],
-            rolling_windows=rolling_windows_from_construction_params(params),
-            history_cols=list(HISTORY_CANDIDATE_FEATURES),
-            model_params=model_params,
-            n_splits=n_splits,
-            test_ids=test_ids,
-        )
-
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-    study = optuna.create_study(
-        direction="minimize",
-        study_name="history_construction",
-    )
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
-    return {
-        "best_params": study.best_params,
-        "best_cv_mae": study.best_value,
-        "study": study,
-    }
 
 
 def run_leave_one_out_ablation(
