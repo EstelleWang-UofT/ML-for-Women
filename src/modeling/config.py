@@ -5,9 +5,9 @@ import numpy as np
 DATA_PATH = "mcphases/merged/physical_activity_merged_processed.csv"
 
 NUMERIC_FEATURES = [
-    "lightly",
-    "moderately",
-    "very",
+    "lightly_activity",
+    "moderately_activity",
+    "very_activity",
     "calories_sum",
     "filtered_demographic_vo2_max",
     "cardio_zone",
@@ -17,6 +17,9 @@ NUMERIC_FEATURES = [
     "estrogen_smooth",
     "age_of_first_menarche",
     "age",
+    "daily_glucose",
+    "daily_hrv",
+    "sleep_score",
 ]
 
 CATEGORICAL_FEATURES = [

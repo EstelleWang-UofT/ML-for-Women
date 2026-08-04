@@ -312,8 +312,12 @@ def compute_rolling_mean_prior(
 
 
 def compute_log1p_activity_sum(df):
-    """Sum of log1p-transformed lightly, moderately, and very columns."""
-    return df["lightly"] + df["moderately"] + df["very"]
+    """Sum of log1p-transformed activity minute columns."""
+    return (
+        df["lightly_activity"]
+        + df["moderately_activity"]
+        + df["very_activity"]
+    )
 
 
 def compute_history_features(
@@ -342,7 +346,7 @@ def compute_history_features(
     rolling_mean_sources = {
         "activity_logsum_roll_mean": (activity_df, "_activity_logsum"),
         "calories_sum_roll_mean": (df, "calories_sum"),
-        "very_roll_mean": (df, "very"),
+        "very_roll_mean": (df, "very_activity"),
     }
     for col in ROLLING_WINDOW_COLUMNS:
         source_df, source_col = rolling_mean_sources[col]
