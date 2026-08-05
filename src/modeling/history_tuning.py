@@ -40,7 +40,7 @@ from modeling.registry import (
 )
 
 DEFAULT_PROXY_PARAMS = {
-    "catboost_ordinal": dict(HISTORY_PROXY_PARAMS),
+    HISTORY_ABLATION_MODEL: dict(HISTORY_PROXY_PARAMS),
     "linear_regression": {"alpha": 1.0},
 }
 

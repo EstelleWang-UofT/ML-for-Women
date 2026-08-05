@@ -7,6 +7,7 @@ from modeling.models.ordinal import (
     attach_groups,
     build_catboost_ordinal,
     build_catboost_regressor,
+    build_elasticnet_regression,
     build_gee_gaussian,
     build_gee_ordinal,
     build_linear_regression,
@@ -14,10 +15,13 @@ from modeling.models.ordinal import (
     build_ordered_logistic,
     build_ordinal_forest,
     build_ordinal_rf,
+    build_svr_regression,
 )
 
 ORDINAL_MODELS = {
     "linear_regression": build_linear_regression,
+    "elasticnet_regression": build_elasticnet_regression,
+    "svr_regression": build_svr_regression,
     "ordinal_rf": build_ordinal_rf,
     "catboost_regressor": build_catboost_regressor,
     "gee_gaussian": build_gee_gaussian,
@@ -37,7 +41,12 @@ TREE_ORDINAL_MODELS = {
     "ordinal_forest",
     "catboost_ordinal",
 }
-PIPELINE_ORDINAL_MODELS = {"linear_regression", "ordered_logistic"}
+PIPELINE_ORDINAL_MODELS = {
+    "linear_regression",
+    "elasticnet_regression",
+    "svr_regression",
+    "ordered_logistic",
+}
 
 
 def _resolve_grouped_training_data(name, bundle, X_train_val_raw, X_test_raw, groups, y_train_val, y_test):
@@ -76,6 +85,21 @@ def _catboost_search_space(trial):
 def _gee_search_space(trial):
     return {
         "maxiter": trial.suggest_int("maxiter", 40, 100),
+    }
+
+
+def _svr_gamma_params(trial):
+    gamma_mode = trial.suggest_categorical("gamma_mode", ["scale", "auto", "float"])
+    if gamma_mode == "float":
+        return {"gamma": trial.suggest_float("gamma", 1e-5, 10.0, log=True)}
+    return {"gamma": gamma_mode}
+
+
+def _svr_search_space(trial):
+    return {
+        "C": trial.suggest_float("C", 0.01, 10.0, log=True),
+        "epsilon": trial.suggest_float("epsilon", 1e-3, 1.0, log=True),
+        **_svr_gamma_params(trial),
     }
 
 
@@ -141,6 +165,11 @@ def get_search_space(name):
         "linear_regression": lambda trial: {
             "alpha": trial.suggest_float("alpha", 1e-3, 10.0, log=True),
         },
+        "elasticnet_regression": lambda trial: {
+            "alpha": trial.suggest_float("alpha", 1e-3, 10.0, log=True),
+            "l1_ratio": trial.suggest_float("l1_ratio", 0.0, 1.0),
+        },
+        "svr_regression": _svr_search_space,
         "ordered_logistic": lambda trial: {
             "alpha": trial.suggest_float("alpha", 1e-3, 10.0, log=True),
         },

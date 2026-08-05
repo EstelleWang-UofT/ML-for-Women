@@ -9,8 +9,9 @@ from catboost import CatBoostClassifier, CatBoostRegressor
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import ElasticNet, Ridge
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.svm import SVR
 from statsmodels.genmod.cov_struct import Autoregressive, Exchangeable
 from statsmodels.genmod.families import Binomial, Gaussian
 from statsmodels.genmod.generalized_estimating_equations import GEE
@@ -84,6 +85,77 @@ class RidgeOrdinalEstimator(BaseEstimator):
         Xt = self.prep_.transform(X)
         return clip_ordinal_predictions(self.model_.predict(Xt))
 
+    def predict_continuous(self, X):
+        Xt = self.prep_.transform(X)
+        return self.model_.predict(Xt)
+
+
+class ElasticNetOrdinalEstimator(BaseEstimator):
+    """ElasticNet on scaled/OHE daily features with clipped ordinal predictions."""
+
+    def __init__(self, alpha=1.0, l1_ratio=0.5):
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
+        self.prep_ = None
+        self.model_ = None
+
+    def fit(self, X, y):
+        self.history_cols_ = _history_columns_in(X)
+        self.prep_ = _base_preprocessor(
+            history_cols=self.history_cols_ if self.history_cols_ else None
+        )
+        Xt = self.prep_.fit_transform(X)
+        self.model_ = ElasticNet(
+            alpha=self.alpha,
+            l1_ratio=self.l1_ratio,
+            max_iter=10000,
+            random_state=RANDOM_STATE,
+        )
+        self.model_.fit(Xt, y)
+        return self
+
+    def predict(self, X):
+        Xt = self.prep_.transform(X)
+        return clip_ordinal_predictions(self.model_.predict(Xt))
+
+    def predict_continuous(self, X):
+        Xt = self.prep_.transform(X)
+        return self.model_.predict(Xt)
+
+
+class SVROrdinalEstimator(BaseEstimator):
+    """RBF SVR on scaled/OHE daily features with clipped ordinal predictions."""
+
+    def __init__(self, C=1.0, epsilon=0.1, gamma="scale"):
+        self.C = C
+        self.epsilon = epsilon
+        self.gamma = gamma
+        self.prep_ = None
+        self.model_ = None
+
+    def fit(self, X, y):
+        self.history_cols_ = _history_columns_in(X)
+        self.prep_ = _base_preprocessor(
+            history_cols=self.history_cols_ if self.history_cols_ else None
+        )
+        Xt = self.prep_.fit_transform(X)
+        self.model_ = SVR(
+            kernel="rbf",
+            C=self.C,
+            epsilon=self.epsilon,
+            gamma=self.gamma,
+        )
+        self.model_.fit(Xt, y)
+        return self
+
+    def predict(self, X):
+        Xt = self.prep_.transform(X)
+        return clip_ordinal_predictions(self.model_.predict(Xt))
+
+    def predict_continuous(self, X):
+        Xt = self.prep_.transform(X)
+        return self.model_.predict(Xt)
+
 
 class OrderedLogisticEstimator(BaseEstimator):
     """mord all-threshold logistic on scaled/OHE daily features."""
@@ -111,6 +183,16 @@ class OrderedLogisticEstimator(BaseEstimator):
 def build_linear_regression(alpha=1.0, **kwargs):
     del kwargs
     return RidgeOrdinalEstimator(alpha=alpha)
+
+
+def build_elasticnet_regression(alpha=1.0, l1_ratio=0.5, **kwargs):
+    del kwargs
+    return ElasticNetOrdinalEstimator(alpha=alpha, l1_ratio=l1_ratio)
+
+
+def build_svr_regression(C=1.0, epsilon=0.1, gamma="scale", **kwargs):
+    del kwargs
+    return SVROrdinalEstimator(C=C, epsilon=epsilon, gamma=gamma)
 
 
 def build_ordered_logistic(alpha=1.0, **kwargs):
@@ -242,6 +324,9 @@ class OrdinalRegressorWrapper(BaseEstimator):
     def predict(self, X):
         preds = self.regressor.predict(X)
         return clip_ordinal_predictions(preds)
+
+    def predict_continuous(self, X):
+        return self.regressor.predict(X)
 
 
 class CumulativeOrdinalForest(BaseEstimator):

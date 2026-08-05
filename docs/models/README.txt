@@ -60,19 +60,22 @@ History features (HISTORY_FEATURES — past days only, per participant wave;
   grouped by id and study_interval):
   fatigue_ewma, fatigue_expanding_mean, fatigue_lag1
   (Rolling-mean columns activity_logsum_roll_mean, calories_sum_roll_mean,
-  very_roll_mean are still computed when tuning construction but may be omitted
+  very_active_roll_mean are still computed when tuning construction but may be omitted
   from HISTORY_FEATURES after ablation.)
 
 Constants: EWMA_ALPHA, ROLLING_WINDOWS (per rolling-mean column),
   EWMA_ALPHA_RANGE=(0.1, 0.5), EWMA_ALPHA_GRID (10 log-spaced alphas),
   ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
-  HISTORY_ABLATION_MODEL=catboost_ordinal,
-  HISTORY_PROXY_PARAMS (fixed catboost_ordinal proxy for history FE notebook grid/ablation),
+  HISTORY_ABLATION_MODEL=ordinal_rf,
+  HISTORY_PROXY_PARAMS (fixed ordinal_rf proxy for history FE notebook grid/ablation;
+    from ordinal_rf_history in 4 fatigue regression.ipynb),
   PRIOR_COL="__prior__"
 
 History feature engineering (standalone notebook):
   notebooks/physical activity/history feature engineering.ipynb
-  Proxy model: catboost_ordinal with fixed HISTORY_PROXY_PARAMS (no model Optuna in notebook).
+  Proxy model: ordinal_rf with fixed HISTORY_PROXY_PARAMS (no model Optuna in notebook).
+  Re-run this notebook after changing the proxy to refresh EWMA_ALPHA / ROLLING_WINDOWS /
+  HISTORY_FEATURES recommendations.
   Stage 1: exhaustive grid over ewma_alpha (EWMA_ALPHA_GRID) x all rolling-window combos
     (4^3=64 per alpha, 640 configs total) with CV on train/val, proxy model.
   Stage 2: leave-one-out + forward selection over HISTORY_CANDIDATE_FEATURES.

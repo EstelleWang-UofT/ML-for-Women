@@ -9,7 +9,7 @@ from modeling.registry import ORDINAL_MODELS
 CATEGORY_ORDER = ("baseline", "base", "history")
 
 
-def collect_summaries(results):
+def collect_summaries(results, include_best_params=True):
     """Build CV and held-out test summary tables from benchmark result dicts.
 
     Each result is the dict returned by ``run_model_benchmark`` or
@@ -24,14 +24,11 @@ def collect_summaries(results):
     for result in results:
         cv_mean = result["cv_summary"].loc["mean", ORDINAL_METRIC_COLS]
         cv_std = result["cv_summary"].loc["std", ORDINAL_METRIC_COLS]
-        cv_row = {
-            "model": result["name"],
-            "best_params": str(result.get("best_params", {})),
-        }
-        test_row = {
-            "model": result["name"],
-            "best_params": str(result.get("best_params", {})),
-        }
+        cv_row = {"model": result["name"]}
+        test_row = {"model": result["name"]}
+        if include_best_params:
+            cv_row["best_params"] = str(result.get("best_params", {}))
+            test_row["best_params"] = str(result.get("best_params", {}))
         for col in ORDINAL_METRIC_COLS:
             cv_row[f"cv_{col}"] = cv_mean[col]
             test_row[f"test_{col}"] = result["test_metrics"][col]
@@ -55,9 +52,11 @@ def model_category(name: str) -> str:
     raise ValueError(f"Unknown model category for {name!r}")
 
 
-def collect_categorized_summaries(results):
+def collect_categorized_summaries(results, include_best_params=True):
     """Build per-category CV and test tables sorted by cv_mae and test_mae."""
-    cv_summary, test_summary = collect_summaries(results)
+    cv_summary, test_summary = collect_summaries(
+        results, include_best_params=include_best_params
+    )
     categorized = {}
     for category in CATEGORY_ORDER:
         cv_cat = cv_summary[cv_summary.index.map(lambda n: model_category(n) == category)]

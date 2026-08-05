@@ -14,6 +14,7 @@ from modeling.config import (
     HISTORY_FEATURES,
     NUMERIC_FEATURES,
     PHASE_ORDER,
+    POST_SPLIT_MEDIAN_COLS,
     PRIOR_COL,
     RANDOM_STATE,
     ROLLING_WINDOW_COLUMNS,
@@ -132,14 +133,15 @@ def split_participant_ids(
 def preprocess_after_split(
     df,
     train_val_mask,
-    literacy_col="menstrual_health_literacy_num",
+    median_cols=POST_SPLIT_MEDIAN_COLS,
 ):
     """Post-split preprocessing fit on train/val rows only, applied to all rows."""
-    if literacy_col not in df.columns or not df[literacy_col].isna().any():
-        return df
     df = df.copy()
-    literacy_median = df.loc[train_val_mask, literacy_col].median()
-    df[literacy_col] = df[literacy_col].fillna(literacy_median)
+    for col in median_cols:
+        if col not in df.columns or not df[col].isna().any():
+            continue
+        fill_value = df.loc[train_val_mask, col].median()
+        df[col] = df[col].fillna(fill_value)
     return df
 
 
@@ -346,7 +348,7 @@ def compute_history_features(
     rolling_mean_sources = {
         "activity_logsum_roll_mean": (activity_df, "_activity_logsum"),
         "calories_sum_roll_mean": (df, "calories_sum"),
-        "very_roll_mean": (df, "very_activity"),
+        "very_active_roll_mean": (df, "very_activity"),
     }
     for col in ROLLING_WINDOW_COLUMNS:
         source_df, source_col = rolling_mean_sources[col]
