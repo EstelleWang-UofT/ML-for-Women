@@ -1,15 +1,33 @@
 # ML for Women — mcPHASES fatigue modeling
 
+## Dataset & Citation
+
+This project utilizes the **mcPHASES** dataset hosted on PhysioNet. 
+
+### Data Access Policy
+Due to the terms of the [PhysioNet Restricted Health Data License 1.5.0](https://www.physionet.org/content/mcphases/1.0.0/), raw or processed dataset files cannot be redistributed in this repository. 
+
+To access the dataset:
+1. Register for an account on [PhysioNet](https://physionet.org/).
+2. Complete credentialing and sign the [PhysioNet Restricted Health Data Use Agreement 1.5.0](https://www.physionet.org/content/mcphases/1.0.0/).
+3. Request access directly on the [mcPHASES Dataset Page](https://doi.org/10.13026/zx6a-2c81).
+4. Download the dataset and place the CSV files in the `data/` directory.
+
+### Citation
+> Lin, B., Li, J. Y., Kalani, K., Truong, K., & Mariakakis, A. (2025). mcPHASES: A Dataset of Physiological, Hormonal, and Self-reported Events and Symptoms for Menstrual Health Tracking with Wearables (version 1.0.0). *PhysioNet*. https://doi.org/10.13026/zx6a-2c81
+
+> Pollard, T., Moody, B. E., Lehman, L., Gow, B., Fernandes, C., Xie, C., Johnson, A., Mark, R. G., & Heldt, T. (2026). PhysioNet as a global platform for biomedical research. *Nature Health*. https://doi.org/10.1038/s44360-026-00096-z
+
 ## Setup
 
-1. Download the [mcPHASES dataset](https://www.physionet.org/content/mcphases/1.0.0/) locally into `mcphases/` (raw CSVs are too large for GitHub).
+1. Download the [mcPHASES dataset](https://www.physionet.org/content/mcphases/1.0.0/) locally into `mcphases/`.
 2. Create a virtual environment and install dependencies:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-## Data pipeline (notebooks)
+## Data pipeline -- Physical Activity only (notebooks)
 
 Notebooks live under `notebooks/physical activity/`:
 
@@ -37,3 +55,5 @@ Run the modeling notebook with the project root on `PYTHONPATH` or use the `%pip
 ## Documentation
 
 Model and pipeline details: [`docs/models/README.txt`](docs/models/README.txt)
+
+
