@@ -6,12 +6,12 @@ import optuna
 
 from modeling.config import N_CV_FOLDS, OPTUNA_TRIALS, ORDINAL_METRIC, RANDOM_STATE
 from modeling.cv import run_group_cv
+from modeling.metrics import compute_metrics, compute_regression_metrics
 from modeling.models.ordinal import attach_groups
-from modeling.calibration import make_model_factory_with_cutpoints
-from modeling.registry import GROUPED_ORDINAL_MODELS, make_model_factory
+from modeling.registry import CONTINUOUS_REGRESSION_MODELS, GROUPED_ORDINAL_MODELS, make_model_factory
 
 
-def _run_group_cv(factory, X, y, groups, n_splits, test_ids):
+def _run_group_cv(factory, X, y, groups, n_splits, test_ids, metrics_fn):
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
@@ -25,6 +25,7 @@ def _run_group_cv(factory, X, y, groups, n_splits, test_ids):
             groups,
             n_splits=n_splits,
             test_ids=test_ids,
+            metrics_fn=metrics_fn,
         )
 
 
@@ -39,16 +40,15 @@ def tune_model(
     n_splits=N_CV_FOLDS,
     test_ids=None,
     bundle=None,
-    cutpoints=None,
 ):
-    """Run Optuna with GroupKFold CV on train/val.
-
-    When ``cutpoints`` is set, each trial wraps the model with
-    ``make_model_factory_with_cutpoints`` so the objective matches cutpoint-based
-    ``predict()`` rather than rint.
-    """
+    """Run Optuna with GroupKFold CV on train/val."""
     del bundle
     use_grouped = name in GROUPED_ORDINAL_MODELS
+    metrics_fn = (
+        compute_regression_metrics
+        if name in CONTINUOUS_REGRESSION_MODELS
+        else compute_metrics
+    )
 
     if X_train_val is None:
         raise ValueError("X_train_val is required.")
@@ -56,14 +56,9 @@ def tune_model(
     if use_grouped:
         X_train_val = attach_groups(X_train_val, groups)
 
-    def _make_factory(params):
-        if cutpoints is None:
-            return make_model_factory(name, params, registry)
-        return make_model_factory_with_cutpoints(name, params, cutpoints, registry)
-
     def objective(trial):
         params = search_space(trial)
-        factory = _make_factory(params)
+        factory = make_model_factory(name, params, registry)
         fold_df, _ = _run_group_cv(
             factory,
             X_train_val,
@@ -71,6 +66,7 @@ def tune_model(
             groups,
             n_splits=n_splits,
             test_ids=test_ids,
+            metrics_fn=metrics_fn,
         )
         return fold_df[ORDINAL_METRIC].mean()
 

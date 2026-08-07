@@ -6,7 +6,7 @@ from sklearn.base import BaseEstimator
 
 from modeling.config import N_CV_FOLDS
 from modeling.data import attach_prior_frame
-from modeling.metrics import ORDINAL_METRIC_COLS, clip_ordinal_predictions
+from modeling.metrics import ORDINAL_METRIC_COLS, clip_ordinal_predictions, compute_metrics
 
 
 class GlobalMeanBaseline(BaseEstimator):
@@ -93,18 +93,22 @@ ORDINAL_BASELINES = {
 }
 
 
-def summarize_baseline_metrics(results):
+def summarize_baseline_metrics(results, metric_cols=None):
+    if metric_cols is None:
+        metric_cols = ORDINAL_METRIC_COLS
     rows = []
     for result in results:
+        result_cols = result.get("metric_cols", metric_cols)
+        cols = [k for k in metric_cols if k in result_cols]
         row = {"model": result["name"]}
-        cv_mean = result["cv_summary"].loc["mean", ORDINAL_METRIC_COLS]
-        row.update({f"cv_{k}": cv_mean[k] for k in ORDINAL_METRIC_COLS})
-        row.update({f"test_{k}": result["test_metrics"][k] for k in ORDINAL_METRIC_COLS})
+        cv_mean = result["cv_summary"].loc["mean", cols]
+        row.update({f"cv_{k}": cv_mean[k] for k in cols})
+        row.update({f"test_{k}": result["test_metrics"][k] for k in cols})
         rows.append(row)
     return pd.DataFrame(rows).set_index("model")
 
 
-def _run_persistence_baseline(name, builder, bundle, n_splits):
+def _run_persistence_baseline(name, builder, bundle, n_splits, metrics_fn):
     from modeling.cv import run_model_benchmark
 
     if name == "lag1_fatigue":
@@ -126,17 +130,18 @@ def _run_persistence_baseline(name, builder, bundle, n_splits):
         y_train_val=bundle.y_ord_train_val,
         y_test=bundle.y_ord_test,
         groups=bundle.groups_train_val,
+        metrics_fn=metrics_fn,
     )
 
 
-def run_baseline_benchmark(name, builder, bundle, n_splits=N_CV_FOLDS):
+def run_baseline_benchmark(name, builder, bundle, n_splits=N_CV_FOLDS, metrics_fn=compute_metrics):
     """Evaluate one baseline with the same CV / test protocol as tuned models."""
     from modeling.cv import run_model_benchmark
 
     factory = builder
 
     if name in {"lag1_fatigue", "expanding_mean"}:
-        return _run_persistence_baseline(name, builder, bundle, n_splits)
+        return _run_persistence_baseline(name, builder, bundle, n_splits, metrics_fn)
 
     return run_model_benchmark(
         name=name,
@@ -148,13 +153,16 @@ def run_baseline_benchmark(name, builder, bundle, n_splits=N_CV_FOLDS):
         y_train_val=bundle.y_ord_train_val,
         y_test=bundle.y_ord_test,
         groups=bundle.groups_train_val,
+        metrics_fn=metrics_fn,
     )
 
 
-def run_all_baseline_benchmarks(bundle, n_splits=N_CV_FOLDS):
+def run_all_baseline_benchmarks(bundle, n_splits=N_CV_FOLDS, metrics_fn=compute_metrics):
     results = []
     for name, builder in ORDINAL_BASELINES.items():
-        result = run_baseline_benchmark(name, builder, bundle, n_splits=n_splits)
+        result = run_baseline_benchmark(
+            name, builder, bundle, n_splits=n_splits, metrics_fn=metrics_fn
+        )
         result["best_params"] = {}
         results.append(result)
     return results

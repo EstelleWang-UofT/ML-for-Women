@@ -63,48 +63,89 @@ def _base_preprocessor(history_cols=None):
     )
 
 
-class RidgeOrdinalEstimator(BaseEstimator):
-    """Ridge on scaled/OHE daily features with clipped ordinal predictions."""
+def _base_preprocessor_for_columns(selected_columns, history_cols=None):
+    """ColumnTransformer restricted to a subset of base (and optional history) columns."""
+    selected = set(selected_columns)
+    numeric_features = [c for c in NUMERIC_FEATURES if c in selected]
+    if history_cols:
+        numeric_features = numeric_features + [
+            c for c in history_cols if c in selected and c not in numeric_features
+        ]
+    cat_features = [c for c in CATEGORICAL_FEATURES if c in selected]
+    transformers = []
+    if numeric_features:
+        transformers.append(("num", StandardScaler(), numeric_features))
+    if cat_features:
+        transformers.append(
+            (
+                "cat",
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                cat_features,
+            )
+        )
+    if not transformers:
+        raise ValueError("No numeric or categorical columns selected for preprocessor.")
+    return ColumnTransformer(transformers)
 
-    def __init__(self, alpha=1.0):
+
+def _fit_columns(estimator, X):
+    if getattr(estimator, "feature_columns", None) is not None:
+        return list(estimator.feature_columns)
+    return list(X.columns)
+
+
+class RidgeOrdinalEstimator(BaseEstimator):
+    """Ridge on scaled/OHE daily features."""
+
+    def __init__(self, alpha=1.0, feature_columns=None):
         self.alpha = alpha
+        self.feature_columns = feature_columns
         self.prep_ = None
         self.model_ = None
 
     def fit(self, X, y):
-        self.history_cols_ = _history_columns_in(X)
-        self.prep_ = _base_preprocessor(
-            history_cols=self.history_cols_ if self.history_cols_ else None
+        cols = _fit_columns(self, X)
+        X_sub = X[cols]
+        self.history_cols_ = _history_columns_in(X_sub)
+        self.prep_ = _base_preprocessor_for_columns(
+            cols,
+            history_cols=self.history_cols_ if self.history_cols_ else None,
         )
-        Xt = self.prep_.fit_transform(X)
+        Xt = self.prep_.fit_transform(X_sub)
         self.model_ = Ridge(alpha=self.alpha)
         self.model_.fit(Xt, y)
         return self
 
+    def _transform(self, X):
+        cols = _fit_columns(self, X)
+        return self.prep_.transform(X[cols])
+
     def predict(self, X):
-        Xt = self.prep_.transform(X)
-        return clip_ordinal_predictions(self.model_.predict(Xt))
+        return self.model_.predict(self._transform(X))
 
     def predict_continuous(self, X):
-        Xt = self.prep_.transform(X)
-        return self.model_.predict(Xt)
+        return self.predict(X)
 
 
 class ElasticNetOrdinalEstimator(BaseEstimator):
-    """ElasticNet on scaled/OHE daily features with clipped ordinal predictions."""
+    """ElasticNet on scaled/OHE daily features."""
 
-    def __init__(self, alpha=1.0, l1_ratio=0.5):
+    def __init__(self, alpha=1.0, l1_ratio=0.5, feature_columns=None):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
+        self.feature_columns = feature_columns
         self.prep_ = None
         self.model_ = None
 
     def fit(self, X, y):
-        self.history_cols_ = _history_columns_in(X)
-        self.prep_ = _base_preprocessor(
-            history_cols=self.history_cols_ if self.history_cols_ else None
+        cols = _fit_columns(self, X)
+        X_sub = X[cols]
+        self.history_cols_ = _history_columns_in(X_sub)
+        self.prep_ = _base_preprocessor_for_columns(
+            cols,
+            history_cols=self.history_cols_ if self.history_cols_ else None,
         )
-        Xt = self.prep_.fit_transform(X)
+        Xt = self.prep_.fit_transform(X_sub)
         self.model_ = ElasticNet(
             alpha=self.alpha,
             l1_ratio=self.l1_ratio,
@@ -114,31 +155,37 @@ class ElasticNetOrdinalEstimator(BaseEstimator):
         self.model_.fit(Xt, y)
         return self
 
+    def _transform(self, X):
+        cols = _fit_columns(self, X)
+        return self.prep_.transform(X[cols])
+
     def predict(self, X):
-        Xt = self.prep_.transform(X)
-        return clip_ordinal_predictions(self.model_.predict(Xt))
+        return self.model_.predict(self._transform(X))
 
     def predict_continuous(self, X):
-        Xt = self.prep_.transform(X)
-        return self.model_.predict(Xt)
+        return self.predict(X)
 
 
 class SVROrdinalEstimator(BaseEstimator):
-    """RBF SVR on scaled/OHE daily features with clipped ordinal predictions."""
+    """RBF SVR on scaled/OHE daily features."""
 
-    def __init__(self, C=1.0, epsilon=0.1, gamma="scale"):
+    def __init__(self, C=1.0, epsilon=0.1, gamma="scale", feature_columns=None):
         self.C = C
         self.epsilon = epsilon
         self.gamma = gamma
+        self.feature_columns = feature_columns
         self.prep_ = None
         self.model_ = None
 
     def fit(self, X, y):
-        self.history_cols_ = _history_columns_in(X)
-        self.prep_ = _base_preprocessor(
-            history_cols=self.history_cols_ if self.history_cols_ else None
+        cols = _fit_columns(self, X)
+        X_sub = X[cols]
+        self.history_cols_ = _history_columns_in(X_sub)
+        self.prep_ = _base_preprocessor_for_columns(
+            cols,
+            history_cols=self.history_cols_ if self.history_cols_ else None,
         )
-        Xt = self.prep_.fit_transform(X)
+        Xt = self.prep_.fit_transform(X_sub)
         self.model_ = SVR(
             kernel="rbf",
             C=self.C,
@@ -148,13 +195,15 @@ class SVROrdinalEstimator(BaseEstimator):
         self.model_.fit(Xt, y)
         return self
 
+    def _transform(self, X):
+        cols = _fit_columns(self, X)
+        return self.prep_.transform(X[cols])
+
     def predict(self, X):
-        Xt = self.prep_.transform(X)
-        return clip_ordinal_predictions(self.model_.predict(Xt))
+        return self.model_.predict(self._transform(X))
 
     def predict_continuous(self, X):
-        Xt = self.prep_.transform(X)
-        return self.model_.predict(Xt)
+        return self.predict(X)
 
 
 class OrderedLogisticEstimator(BaseEstimator):
@@ -322,11 +371,10 @@ class OrdinalRegressorWrapper(BaseEstimator):
         return self
 
     def predict(self, X):
-        preds = self.regressor.predict(X)
-        return clip_ordinal_predictions(preds)
+        return self.regressor.predict(X)
 
     def predict_continuous(self, X):
-        return self.regressor.predict(X)
+        return self.predict(X)
 
 
 class CumulativeOrdinalForest(BaseEstimator):

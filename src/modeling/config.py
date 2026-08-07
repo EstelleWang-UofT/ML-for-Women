@@ -45,7 +45,6 @@ OPTUNA_TRIALS = 30
 GEE_OPTUNA_TRIALS = 10
 ELASTICNET_OPTUNA_TRIALS = 50
 SVR_OPTUNA_TRIALS = 50
-CUTPOINT_ALTERNATING_ITERATIONS = 5
 
 POST_SPLIT_MEDIAN_COLS = (
     "menstrual_health_literacy_num",
@@ -95,7 +94,7 @@ ROLLING_WINDOW_CHOICES = [2, 3, 5, 7]
 HISTORY_ABLATION_MODEL = "ordinal_rf"
 
 # Fixed proxy hyperparams for history FE notebook grid search and ablation (not full model Optuna).
-# Optuna best from ordinal_rf_history in 4 fatigue regression.ipynb (min_samples_leaf not in saved output).
+# Optuna best from ordinal_rf_history in 4 fatigue regression collapse.ipynb.
 HISTORY_PROXY_PARAMS = {
     "n_estimators": 396,
     "max_depth": 3,

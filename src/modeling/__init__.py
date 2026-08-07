@@ -27,9 +27,11 @@ from modeling.data import (
     split_participant_ids,
     split_summary_table,
 )
-from modeling.metrics import compute_metrics
+from modeling.metrics import REGRESSION_METRIC_COLS, compute_metrics, compute_regression_metrics
 from modeling.baselines import run_all_baseline_benchmarks, summarize_baseline_metrics
-from modeling.registry import ORDINAL_MODELS, get_search_space
+from modeling.registry import CONTINUOUS_REGRESSION_MODELS, ORDINAL_MODELS, get_search_space
+from modeling.runner import tune_and_benchmark_model
+from modeling.tuning import tune_model
 from modeling.significance import (
     compare_history_feature_count_significance,
     paired_participant_significance_test,
@@ -67,7 +69,8 @@ __all__ = [
     "ORDINAL_MODELS",
     "RANDOM_STATE",
     "TEST_SIZE",
-    "CATEGORY_ORDER",
+    "CONTINUOUS_REGRESSION_MODELS",
+    "REGRESSION_METRIC_COLS",
     "build_history_ablation_summary",
     "build_history_feature_count_comparison",
     "build_split_bundle",
@@ -75,6 +78,7 @@ __all__ = [
     "collect_summaries",
     "compare_history_feature_count_significance",
     "compute_metrics",
+    "compute_regression_metrics",
     "evaluate_on_test",
     "exhaustive_tune_history_construction",
     "get_search_space",

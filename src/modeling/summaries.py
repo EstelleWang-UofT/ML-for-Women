@@ -9,27 +9,22 @@ from modeling.registry import ORDINAL_MODELS
 CATEGORY_ORDER = ("baseline", "base", "history")
 
 
-def collect_summaries(results, include_best_params=True):
-    """Build CV and held-out test summary tables from benchmark result dicts.
-
-    Each result is the dict returned by ``run_model_benchmark`` or
-    ``tune_and_benchmark_model`` (keys: name, cv_summary, test_metrics,
-    best_params).
-
-    CV columns are means over GroupKFold folds on train/val participants.
-    Test columns come from a single refit on all train/val rows, evaluated
-    on held-out test participants.
-    """
+def collect_summaries(results, include_best_params=True, metric_cols=None):
+    """Build CV and held-out test summary tables from benchmark result dicts."""
+    if metric_cols is None:
+        metric_cols = ORDINAL_METRIC_COLS
     cv_rows, test_rows = [], []
     for result in results:
-        cv_mean = result["cv_summary"].loc["mean", ORDINAL_METRIC_COLS]
-        cv_std = result["cv_summary"].loc["std", ORDINAL_METRIC_COLS]
+        result_cols = result.get("metric_cols", metric_cols)
+        cols = [c for c in metric_cols if c in result_cols]
+        cv_mean = result["cv_summary"].loc["mean", cols]
+        cv_std = result["cv_summary"].loc["std", cols]
         cv_row = {"model": result["name"]}
         test_row = {"model": result["name"]}
         if include_best_params:
             cv_row["best_params"] = str(result.get("best_params", {}))
             test_row["best_params"] = str(result.get("best_params", {}))
-        for col in ORDINAL_METRIC_COLS:
+        for col in cols:
             cv_row[f"cv_{col}"] = cv_mean[col]
             test_row[f"test_{col}"] = result["test_metrics"][col]
         cv_row["cv_mae_std"] = cv_std["mae"]
@@ -52,10 +47,10 @@ def model_category(name: str) -> str:
     raise ValueError(f"Unknown model category for {name!r}")
 
 
-def collect_categorized_summaries(results, include_best_params=True):
+def collect_categorized_summaries(results, include_best_params=True, metric_cols=None):
     """Build per-category CV and test tables sorted by cv_mae and test_mae."""
     cv_summary, test_summary = collect_summaries(
-        results, include_best_params=include_best_params
+        results, include_best_params=include_best_params, metric_cols=metric_cols
     )
     categorized = {}
     for category in CATEGORY_ORDER:

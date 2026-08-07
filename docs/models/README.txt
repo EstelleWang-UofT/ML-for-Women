@@ -68,7 +68,7 @@ Constants: EWMA_ALPHA, ROLLING_WINDOWS (per rolling-mean column),
   ROLLING_WINDOW_CHOICES=[2, 3, 5, 7],
   HISTORY_ABLATION_MODEL=ordinal_rf,
   HISTORY_PROXY_PARAMS (fixed ordinal_rf proxy for history FE notebook grid/ablation;
-    from ordinal_rf_history in 4 fatigue regression.ipynb),
+    from ordinal_rf_history in 4 fatigue regression collapse.ipynb),
   PRIOR_COL="__prior__"
 
 History feature engineering (standalone notebook):

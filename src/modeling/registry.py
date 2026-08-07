@@ -41,6 +41,13 @@ TREE_ORDINAL_MODELS = {
     "ordinal_forest",
     "catboost_ordinal",
 }
+CONTINUOUS_REGRESSION_MODELS = {
+    "linear_regression",
+    "elasticnet_regression",
+    "svr_regression",
+    "ordinal_rf",
+    "catboost_regressor",
+}
 PIPELINE_ORDINAL_MODELS = {
     "linear_regression",
     "elasticnet_regression",

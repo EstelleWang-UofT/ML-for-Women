@@ -13,6 +13,7 @@ def run_group_cv(
     groups,
     n_splits=5,
     test_ids=None,
+    metrics_fn=compute_metrics,
 ):
     gkf = GroupKFold(n_splits=n_splits)
     fold_results = []
@@ -39,7 +40,7 @@ def run_group_cv(
 
         model.fit(X_train, y_series.iloc[train_idx])
         preds = model.predict(X_val)
-        metrics = compute_metrics(y_series.iloc[val_idx], preds)
+        metrics = metrics_fn(y_series.iloc[val_idx], preds)
         metrics["fold"] = fold
         metrics["n_train_participants"] = len(train_group_ids)
         metrics["n_val_participants"] = len(val_group_ids)
@@ -60,11 +61,12 @@ def evaluate_on_test(
     y_train_val,
     X_test,
     y_test,
+    metrics_fn=compute_metrics,
 ):
     model = model_factory()
     model.fit(X_train_val, y_train_val)
     preds = model.predict(X_test)
-    return compute_metrics(y_test, preds), model
+    return metrics_fn(y_test, preds), model
 
 
 def _extract_model_summary(model):
@@ -85,6 +87,7 @@ def run_model_benchmark(
     X_test=None,
     n_splits=5,
     test_ids=None,
+    metrics_fn=compute_metrics,
 ):
     fold_df, cv_summary = run_group_cv(
         model_factory,
@@ -93,6 +96,7 @@ def run_model_benchmark(
         groups,
         n_splits=n_splits,
         test_ids=test_ids,
+        metrics_fn=metrics_fn,
     )
     test_metrics, final_model = evaluate_on_test(
         model_factory,
@@ -100,6 +104,7 @@ def run_model_benchmark(
         y_train_val,
         X_test,
         y_test,
+        metrics_fn=metrics_fn,
     )
 
     result = {
@@ -108,6 +113,7 @@ def run_model_benchmark(
         "fold_df": fold_df,
         "cv_summary": cv_summary,
         "test_metrics": test_metrics,
+        "metric_cols": list(test_metrics.keys()),
     }
     summary = _extract_model_summary(final_model)
     if summary is not None:
