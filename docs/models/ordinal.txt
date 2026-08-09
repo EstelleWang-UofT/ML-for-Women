@@ -14,7 +14,7 @@ Continuous loss on the numeric fatigue scale; predictions are rounded and clippe
 ### linear_regression
 
 Task: Ordinal regression (fatigue_num 0–5)
-Purpose: Ridge regression baseline on scaled numeric + one-hot categorical features.
+Purpose: Ridge regression baseline on scaled numerics plus binary/ordinal columns as single slopes; one-hot `phase` only; sexually-active `-1` sentinel split into missing indicator + 0/1 value.
 Optuna: alpha log-uniform [1e-3, 10.0].
 Prediction: clip(round(ŷ), 0, 5).
 Evaluation: CV MAE. Test MAE, RMSE, R2, QWK.

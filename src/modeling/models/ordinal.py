@@ -20,6 +20,7 @@ import statsmodels.api as sm
 
 from modeling.config import (
     CATEGORICAL_FEATURES,
+    FEATURE_COLUMNS,
     HISTORY_CANDIDATE_FEATURES,
     NUMERIC_FEATURES,
     PHASE_TO_IDX,
@@ -37,6 +38,15 @@ DAY_VARYING_CATEGORICAL = ["is_weekend", "phase", "exerciselevel_num"]
 FIT_METHODS = ("lbfgs", "bfgs")
 NUM_ORDINAL_CLASSES = 6
 NUM_ORDINAL_THRESHOLDS = NUM_ORDINAL_CLASSES - 1
+
+SEXUALLY_ACTIVE_MISSING_COL = "sexually_active_missing"
+_RIDGE_AS_NUMERIC = [
+    "is_weekend",
+    "exerciselevel_num",
+    "menstrual_health_literacy_num",
+    "sexually_active_num",
+]
+_RIDGE_CATEGORICAL = ["phase"]
 
 
 def _history_columns_in(X):
@@ -88,6 +98,61 @@ def _base_preprocessor_for_columns(selected_columns, history_cols=None):
     return ColumnTransformer(transformers)
 
 
+def _prepare_ridge_features(X):
+    """Derive sexually-active missing indicator; keep 0/1 when known."""
+    X = X.copy()
+    if "sexually_active_num" in X.columns:
+        sa = X["sexually_active_num"]
+        X[SEXUALLY_ACTIVE_MISSING_COL] = (sa == -1).astype(float)
+        X["sexually_active_num"] = sa.where(sa != -1, 0).astype(float)
+    return X
+
+
+def _ridge_numeric_columns(selected_columns, history_cols=None):
+    selected = set(selected_columns)
+    numeric_features = [c for c in NUMERIC_FEATURES if c in selected]
+    numeric_features.extend(c for c in _RIDGE_AS_NUMERIC if c in selected)
+    if "sexually_active_num" in selected:
+        numeric_features.append(SEXUALLY_ACTIVE_MISSING_COL)
+    if history_cols:
+        numeric_features.extend(
+            c
+            for c in history_cols
+            if c in selected and c not in numeric_features
+        )
+    return numeric_features
+
+
+def _ridge_preprocessor_for_columns(selected_columns, history_cols=None):
+    """Ridge design: scaled numerics + binary/ordinals; one-hot phase only."""
+    selected = set(selected_columns)
+    transformers = []
+    numeric_features = _ridge_numeric_columns(selected_columns, history_cols=history_cols)
+    if numeric_features:
+        transformers.append(("num", StandardScaler(), numeric_features))
+    cat_features = [c for c in _RIDGE_CATEGORICAL if c in selected]
+    if cat_features:
+        transformers.append(
+            (
+                "cat",
+                OneHotEncoder(
+                    handle_unknown="ignore",
+                    sparse_output=False,
+                    drop="first",
+                ),
+                cat_features,
+            )
+        )
+    if not transformers:
+        raise ValueError("No numeric or categorical columns selected for preprocessor.")
+    return ColumnTransformer(transformers)
+
+
+def _ridge_preprocessor(history_cols=None):
+    """Ridge preprocessor on all base (and optional history) columns."""
+    return _ridge_preprocessor_for_columns(FEATURE_COLUMNS, history_cols=history_cols)
+
+
 def _fit_columns(estimator, X):
     if getattr(estimator, "feature_columns", None) is not None:
         return list(estimator.feature_columns)
@@ -95,7 +160,7 @@ def _fit_columns(estimator, X):
 
 
 class RidgeOrdinalEstimator(BaseEstimator):
-    """Ridge on scaled/OHE daily features."""
+    """Ridge on scaled numerics, binary/ordinals, and one-hot phase only."""
 
     def __init__(self, alpha=1.0, feature_columns=None):
         self.alpha = alpha
@@ -107,18 +172,20 @@ class RidgeOrdinalEstimator(BaseEstimator):
         cols = _fit_columns(self, X)
         X_sub = X[cols]
         self.history_cols_ = _history_columns_in(X_sub)
-        self.prep_ = _base_preprocessor_for_columns(
+        self.prep_ = _ridge_preprocessor_for_columns(
             cols,
             history_cols=self.history_cols_ if self.history_cols_ else None,
         )
-        Xt = self.prep_.fit_transform(X_sub)
+        X_prepared = _prepare_ridge_features(X_sub)
+        Xt = self.prep_.fit_transform(X_prepared)
         self.model_ = Ridge(alpha=self.alpha)
         self.model_.fit(Xt, y)
         return self
 
     def _transform(self, X):
         cols = _fit_columns(self, X)
-        return self.prep_.transform(X[cols])
+        X_prepared = _prepare_ridge_features(X[cols])
+        return self.prep_.transform(X_prepared)
 
     def predict(self, X):
         return self.model_.predict(self._transform(X))
